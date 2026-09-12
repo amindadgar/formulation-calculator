@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Formulation Cost &amp; Price Calculator</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">◍</span>
+    <div>
+      <h1>Formulation Costing</h1>
+      <p class="sub">Ingredients → formulation → batch cost → selling price</p>
+    </div>
+  </div>
+  <div class="toolbar">
+    <label class="inline">Currency
+      <input id="currency" type="text" list="currency-list" maxlength="3" spellcheck="false"
+             autocomplete="off" title="ISO code, e.g. IRR (Rial) or IRT (Toman)">
+      <datalist id="currency-list">
+        <option value="IRR" label="Iranian Rial"></option>
+        <option value="IRT" label="Iranian Toman"></option>
+        <option value="USD" label="US Dollar"></option>
+        <option value="EUR" label="Euro"></option>
+        <option value="AED" label="UAE Dirham"></option>
+        <option value="TRY" label="Turkish Lira"></option>
+      </datalist>
+    </label>
+    <button id="btn-howto" class="ghost help" type="button"><span aria-hidden="true">?</span> How to</button>
+    <button id="btn-export" class="ghost" type="button">Export</button>
+    <button id="btn-import" class="ghost" type="button">Import</button>
+    <button id="btn-demo" class="ghost" type="button">Load demo</button>
+    <input id="file-import" type="file" accept="application/json" hidden>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="formulations" type="button">Formulations</button>
+  <button class="tab" data-tab="ingredients" type="button">Ingredients</button>
+</nav>
+
+<!-- ============ INGREDIENTS ============ -->
+<section id="view-ingredients" class="view" hidden>
+  <div class="view-head">
+    <div>
+      <h2>Ingredients</h2>
+      <p class="hint">Enter the purchase price per unit exactly as your supplier quotes it (e.g. 4,200,000 Rial per kg).
+        Density is only needed when an ingredient is bought by volume but used by weight (or vice-versa).</p>
+    </div>
+    <div class="view-actions">
+      <input id="ing-search" class="search" type="search" placeholder="Search ingredients…">
+      <button id="btn-add-ing" class="primary" type="button">+ Add ingredient</button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table class="grid" id="ing-table">
+      <thead>
+        <tr>
+          <th style="width:22%">Name (INCI / trade)</th>
+          <th style="width:11%">Code</th>
+          <th style="width:15%">Supplier</th>
+          <th style="width:12%">Price</th>
+          <th style="width:9%">Per</th>
+          <th style="width:11%">Density<span class="th-sub">g/mL</span></th>
+          <th style="width:14%">Unit cost</th>
+          <th style="width:6%"></th>
+        </tr>
+      </thead>
+      <tbody id="ing-body"></tbody>
+    </table>
+  </div>
+  <p id="ing-empty" class="empty" hidden>No ingredients yet. Add one, or load the demo data set.</p>
+</section>
+
+<!-- ============ FORMULATIONS ============ -->
+<section id="view-formulations" class="view">
+  <div class="layout">
+
+    <aside class="side">
+      <div class="side-head">
+        <h2>Products</h2>
+        <button id="btn-add-form" class="primary small" type="button">+ New</button>
+      </div>
+      <ul id="form-list" class="form-list"></ul>
+      <p id="form-empty" class="empty small" hidden>No formulations yet.</p>
+    </aside>
+
+    <main class="editor" id="editor">
+      <p class="empty">Select a formulation, or create one.</p>
+    </main>
+
+  </div>
+</section>
+
+<footer class="foot">
+  <span>Data is stored locally in this browser. Use <b>Export</b> to back it up.</span>
+</footer>
+
+
+<!-- ============ HOW TO ============ -->
+<dialog id="howto" class="howto">
+  <header class="howto-head">
+    <div>
+      <h2>How to use this app</h2>
+      <p class="sub">Six steps, from a supplier price list to a selling price.</p>
+    </div>
+    <button class="ghost small" data-close type="button">Close</button>
+  </header>
+
+  <div class="howto-body">
+
+    <section class="step">
+      <h3><span class="stepn">1</span> Put your raw materials in the price list</h3>
+      <p>Open the <b>Ingredients</b> tab. Every material you buy goes in here once.</p>
+      <figure class="shot" data-shot="ingredients">
+        <img src="img/1-ingredients.png" alt="The ingredients table, with the price, unit and density columns marked">
+        <span class="pin" style="--x:17.24%;--y:37.85%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:56.03%;--y:37.85%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:65.95%;--y:37.85%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:78.19%;--y:37.85%" aria-hidden="true">4</span>
+        <span class="pin" style="--x:97.76%;--y:8.62%" aria-hidden="true">5</span>
+      </figure>
+      <ol class="legend">
+        <li>The name you know the material by.</li>
+        <li>The price you pay your supplier.</li>
+        <li>What that price buys — per <b>kg</b>, <b>L</b>, <b>pcs</b> and so on. Enter the price exactly as it is quoted; the app works out the rest.</li>
+        <li>Density, only if you buy a material by litre but use it by weight (or the other way round). Leave it empty otherwise.</li>
+        <li>Adds an empty row. Everything saves as you type.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h3><span class="stepn">2</span> Create the product</h3>
+      <p>Go to <b>Formulations</b> and press <b>+ New</b>, then describe the batch you make.</p>
+      <figure class="shot" data-shot="product">
+        <img src="img/2-product.png" alt="The product card, with batch size, fill size and overage marked">
+        <span class="pin" style="--x:18.16%;--y:35.48%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:63.34%;--y:48.85%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:82.96%;--y:48.85%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:4.60%;--y:79.26%" aria-hidden="true">4</span>
+      </figure>
+      <ol class="legend">
+        <li>The product name, as you want it on the cost sheet.</li>
+        <li>How much you make in one batch — for example 100 kg.</li>
+        <li>How much goes in one jar or bottle. 100 kg ÷ 50 g = 2,000 units.</li>
+        <li>How much material is lost in the vessel and the filling line. 2 % means you buy 2 % more than the recipe says.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h3><span class="stepn">3</span> Write the recipe</h3>
+      <p>Add one row per ingredient. Costs appear while you type.</p>
+      <figure class="shot" data-shot="recipe">
+        <img src="img/3-recipe.png" alt="The formulation table, with the percentage column and running total marked">
+        <span class="pin" style="--x:8.63%;--y:19.66%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:38.45%;--y:19.66%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:46.08%;--y:19.66%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:76.12%;--y:19.82%" aria-hidden="true">4</span>
+        <span class="pin" style="--x:14.80%;--y:94.16%" aria-hidden="true">5</span>
+      </figure>
+      <ol class="legend">
+        <li>An optional phase label (A, B, C…) — it only groups the cost sheet.</li>
+        <li>Pick the material from your price list.</li>
+        <li>How much of it: a percentage of the batch, or a real quantity if you switch the toggle above.</li>
+        <li>What that comes to in kilos and in money, for this batch.</li>
+        <li>The running total. It must reach <b>100 %</b> — the badge turns amber until it does.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h3><span class="stepn">4</span> Add the other costs and your profit</h3>
+      <figure class="shot" data-shot="costs">
+        <img src="img/4-costs.png" alt="The other costs and pricing card">
+        <span class="pin" style="--x:4.60%;--y:42.86%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:24.22%;--y:42.86%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:43.83%;--y:42.86%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:63.34%;--y:42.86%" aria-hidden="true">4</span>
+        <span class="pin" style="--x:82.96%;--y:42.86%" aria-hidden="true">5</span>
+      </figure>
+      <ol class="legend">
+        <li>The jar, cap, carton and label for one unit.</li>
+        <li>What making one batch costs you in wages.</li>
+        <li>Rent, electricity, QC — as a percentage of everything above.</li>
+        <li>How much you add on top of cost. 120 % means you sell for 2.2 × what it cost you.</li>
+        <li>VAT, added at the very end.</li>
+      </ol>
+    </section>
+
+    <section class="step">
+      <h3><span class="stepn">5</span> Read your price</h3>
+      <figure class="shot" data-shot="price">
+        <img src="img/5-price.png" alt="The cost and price panel with the headline figures">
+        <span class="pin" style="--x:51.23%;--y:8.78%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:70.63%;--y:8.78%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:89.91%;--y:8.78%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:30.49%;--y:44.53%" aria-hidden="true">4</span>
+      </figure>
+      <ol class="legend">
+        <li>What one batch costs you in total.</li>
+        <li>What one jar costs you.</li>
+        <li>What you sell it for, before and after VAT.</li>
+        <li>The same figures written out, so you can see where the money goes.</li>
+      </ol>
+      <p class="tip">If anything is wrong — percentages that do not reach 100 %, a material with no price — a coloured note appears at the bottom of this panel and tells you what to fix.</p>
+    </section>
+
+    <section class="step">
+      <h3><span class="stepn">6</span> Keep a backup</h3>
+      <p>Your data lives in this browser only. It is not sent anywhere.</p>
+      <figure class="shot" data-shot="toolbar">
+        <img src="img/6-toolbar.png" alt="The toolbar buttons in the header">
+        <span class="pin" style="--x:20.94%;--y:79.63%" aria-hidden="true">1</span>
+        <span class="pin" style="--x:54.53%;--y:79.63%" aria-hidden="true">2</span>
+        <span class="pin" style="--x:69.25%;--y:79.63%" aria-hidden="true">3</span>
+        <span class="pin" style="--x:86.79%;--y:79.63%" aria-hidden="true">4</span>
+      </figure>
+      <ol class="legend">
+        <li>The currency everything is shown in. Prices are never converted — type them all in the same currency.</li>
+        <li>Saves everything to one file. Do this regularly.</li>
+        <li>Loads a file you saved before, replacing what is here.</li>
+        <li>Brings back the example products, if you want something to look at.</li>
+      </ol>
+      <p class="tip">To print or save a cost sheet as PDF, open a product and press <b>Print cost sheet</b>.</p>
+    </section>
+
+  </div>
+
+  <footer class="howto-foot">
+    <button class="primary" data-close type="button">Got it</button>
+  </footer>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>

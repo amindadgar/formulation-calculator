@@ -1,0 +1,33 @@
+# --- macOS -------------------------------------------------------------
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# --- editors -----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*~
+
+# --- python (tools/) ---------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- local tool settings -----------------------------------------------
+# .claude/launch.json IS committed: it is how the dev server is started.
+.claude/settings.local.json
+
+# --- scratch from tools/build-shots.py ---------------------------------
+# The script works in a temp directory, but ignore these in case output is
+# ever pointed at the repo.
+shots/
+shot-profile-*/
+
+# --- exported data -----------------------------------------------------
+# "Export" downloads your real ingredient prices and formulations. Supplier
+# pricing does not belong in a public repository. Use `git add -f` if you
+# deliberately want to commit a sample data set.
+formulations-*.json
