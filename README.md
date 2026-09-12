@@ -27,15 +27,25 @@ file is also how you move data to another computer.
 
 ## Publishing it (GitHub Pages)
 
-The repository is the website — plain files, no build step. Once, in the
-repository's **Settings → Pages**, set **Source** to **GitHub Actions**. After
-that every push to `main` republishes the site through
-`.github/workflows/pages.yml`.
+The repository is the website — plain files, no build step.
+
+**One manual step is unavoidable, and it comes first.** A repository admin has
+to open **Settings → Pages → Build and deployment → Source** and choose
+**GitHub Actions** (not "Deploy from a branch"). That selection is what creates
+the Pages site; it takes effect immediately, with no Save button. The workflow
+cannot do it for you — creating a Pages site needs `administration: write`,
+which the Actions `GITHUB_TOKEN` is never granted.
+
+With that done, every push to `main` republishes through
+`.github/workflows/pages.yml`. The first run after enabling Pages has to be
+started by hand (Actions → *Deploy to GitHub Pages* → Run workflow), since
+earlier failed runs do not retry themselves.
 
 (The alternative, if you would rather not use a workflow: set Source to
 **Deploy from a branch**, branch `main`, folder `/ (root)`, and delete the
-workflow file. `.nojekyll` is what stops GitHub from running the pages through
-Jekyll.)
+workflow file. `.nojekyll` matters only on that route — it stops GitHub running
+the files through Jekyll. On the Actions route Jekyll never runs, and
+`upload-pages-artifact` excludes dotfiles from the upload anyway.)
 
 Two things worth knowing before you share the link:
 

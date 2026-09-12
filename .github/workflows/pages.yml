@@ -1,8 +1,16 @@
 name: Deploy to GitHub Pages
 
 # The site is plain static files, so there is nothing to build — the repository
-# is published as-is. Set Settings → Pages → Source to "GitHub Actions" once,
-# and every push to main republishes.
+# is published as-is.
+#
+# ONE-TIME SETUP, done by a repository admin in the browser:
+#   Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions"
+# That is what creates the Pages site. A workflow cannot do it for you: the
+# REST call behind it needs `administration: write`, which the Actions
+# GITHUB_TOKEN can never hold (actions/configure-pages' own `enablement` input
+# documents that it "requires a token other than GITHUB_TOKEN").
+#
+# After that, every push to main republishes.
 
 on:
   push:
@@ -26,15 +34,10 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
-      # enablement: true turns Pages on via the API if it has never been
-      # enabled, so this workflow works on a fresh repository without first
-      # setting Settings -> Pages -> Source by hand.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: .          # .git and .github are excluded by the action
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
