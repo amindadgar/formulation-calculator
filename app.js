@@ -35,7 +35,7 @@ const num = v => {
 };
 /* Thousands-grouped plain number, for money fields that run to nine digits. */
 const grouped = v => (v === '' || v == null)
-  ? '' : new Intl.NumberFormat(undefined, { maximumFractionDigits: 6 }).format(num(v));
+  ? '' : new Intl.NumberFormat(INPUT_LOCALE, { maximumFractionDigits: 6 }).format(num(v));
 const esc = s => String(s == null ? '' : s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -43,8 +43,8 @@ const esc = s => String(s == null ? '' : s)
    number of decimals they are actually quoted in. IRT (Toman) is not an ISO
    code — it is offered because Iranian prices are usually quoted in Toman. */
 const CURRENCIES = {
-  IRR: { symbol: 'IRR', decimals: 0, label: 'Iranian Rial' },
-  IRT: { symbol: 'IRT', decimals: 0, label: 'Iranian Toman' },
+  IRR: { key: 'currency.IRR.symbol', decimals: 0 },
+  IRT: { key: 'currency.IRT.symbol', decimals: 0 },
 };
 const decCache = new Map();
 function naturalDecimals(code) {
@@ -68,38 +68,47 @@ function money(v) {
   const fmt = { minimumFractionDigits: dec, maximumFractionDigits: dec };
 
   if (CURRENCIES[code]) {
-    return new Intl.NumberFormat(undefined, fmt).format(v) + ' ' + CURRENCIES[code].symbol;
+    return new Intl.NumberFormat(displayLocale(), fmt).format(v) + ' ' + t(CURRENCIES[code].key);
   }
   try {
-    return new Intl.NumberFormat(undefined,
+    return new Intl.NumberFormat(displayLocale(),
       Object.assign({ style: 'currency', currency: code }, fmt)).format(v);
   } catch (e) {
-    return new Intl.NumberFormat(undefined, fmt).format(v) + (code ? ' ' + code : '');
+    return new Intl.NumberFormat(displayLocale(), fmt).format(v) + (code ? ' ' + code : '');
   }
 }
 /* Large figures (a Rial batch cost runs to ten digits) get a compact echo. */
 function compact(v) {
   if (!Number.isFinite(v) || Math.abs(v) < 1e6) return '';
   try {
-    return '\u2248 ' + new Intl.NumberFormat(undefined,
+    return '\u2248 ' + new Intl.NumberFormat(displayLocale(),
       { notation: 'compact', maximumFractionDigits: 2 }).format(v);
   } catch (e) { return ''; }
 }
 function trimNum(v, maxDec = 4) {
   if (!Number.isFinite(v)) return '—';
-  return parseFloat(v.toFixed(maxDec)).toLocaleString(undefined, { maximumFractionDigits: maxDec });
+  return parseFloat(v.toFixed(maxDec)).toLocaleString(displayLocale(), { maximumFractionDigits: maxDec });
 }
 /* Pretty-print a quantity held in base units (g / mL / pcs). */
+function unitLabel(u) { return t('units.' + u); }
 function fmtQty(base, dim) {
-  if (dim === 'count') return trimNum(base, 0) + ' pcs';
+  if (dim === 'count') return trimNum(base, 0) + ' ' + unitLabel('pcs');
   const big = dim === 'mass' ? 'kg' : 'L';
   const small = dim === 'mass' ? 'g' : 'mL';
   return Math.abs(base) >= 1000
-    ? trimNum(base / 1000, 4) + ' ' + big
-    : trimNum(base, 4) + ' ' + small;
+    ? trimNum(base / 1000, 4) + ' ' + unitLabel(big)
+    : trimNum(base, 4) + ' ' + unitLabel(small);
 }
+/* A type="number" input runs the browser's value sanitiser before this code
+   ever sees it, and that sanitiser discards exactly the Persian (۰-۹) and
+   Arabic-Indic digits, the Arabic decimal mark and the Arabic thousands
+   separator that toAscii()/num() above exist to accept. Every numeric field is
+   therefore a text field with the decimal keypad, parsed by num(). */
+const NUMF = 'type="text" inputmode="decimal" data-num="1" autocomplete="off" spellcheck="false"';
+
 function opts(list, selected) {
-  return list.map(u => `<option value="${u}"${u === selected ? ' selected' : ''}>${u}</option>`).join('');
+  return list.map(u =>
+    `<option value="${u}"${u === selected ? ' selected' : ''}>${esc(unitLabel(u))}</option>`).join('');
 }
 
 /* ----------------------------------------------------------------- state */
@@ -110,13 +119,13 @@ let ingFilter = '';
 
 function save() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
-  catch (e) { console.warn('Could not save:', e); }
+  catch (e) { console.warn(t('console.couldNotSave'), e); }
 }
 function load() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) { state = normalise(JSON.parse(raw)); return true; }
-  } catch (e) { console.warn('Could not load saved data:', e); }
+  } catch (e) { console.warn(t('console.couldNotLoad'), e); }
   return false;
 }
 function normalise(data) {
@@ -132,7 +141,7 @@ function normalise(data) {
   }));
   s.formulations = s.formulations.map(f => ({
     id: f.id || uid(),
-    name: f.name || 'Untitled product',
+    name: f.name || t('defaults.untitledProduct'),
     code: f.code || '',
     mode: f.mode === 'absolute' ? 'absolute' : 'percent',
     batchSize: num(f.batchSize) || 100,
@@ -178,7 +187,7 @@ function compute(f) {
     const r = { idx, line: l, ing, netBase: 0, dim: batchU.dim, cost: 0, pct: 0, error: null };
 
     if (!ing) {
-      r.error = 'No ingredient selected';
+      r.error = t('validation.noIngredientSelected');
       lines.push(r);
       return;
     }
@@ -206,9 +215,11 @@ function compute(f) {
     if (r.dim !== ingU.dim) {
       const d = num(ing.density);
       if (r.dim === 'count' || ingU.dim === 'count') {
-        r.error = `"${ing.name || 'ingredient'}" is priced per ${ing.unit}; that cannot be converted to ${r.dim}.`;
+        r.error = t('validation.cannotConvertCount', {
+          name: ing.name || t('defaults.ingredient'), unit: iso(unitLabel(ing.unit)), dim: t('dim.' + r.dim) });
       } else if (d <= 0) {
-        r.error = `"${ing.name || 'ingredient'}" is priced per ${ing.unit} but used by ${r.dim}. Set its density.`;
+        r.error = t('validation.needsDensity', {
+          name: ing.name || t('defaults.ingredient'), unit: iso(unitLabel(ing.unit)), dim: t('dim.' + r.dim) });
       } else if (r.dim === 'mass') {
         qtyForPricing = grossBase / d;   // g ÷ (g/mL) = mL
       } else {
@@ -222,29 +233,34 @@ function compute(f) {
       r.cost = qtyForPricing * r.unitCostBase;
       materialCost += r.cost;
       if (num(ing.price) <= 0) {
-        msgs.push({ type: 'warn', text: `"${ing.name || 'Unnamed ingredient'}" has no price — it is costed at zero.` });
+        msgs.push({ type: 'warn', text: t('validation.noPrice', { name: ing.name || t('defaults.unnamedIngredient') }) });
       }
     }
     lines.push(r);
   });
 
-  lines.forEach(r => { if (r.error) msgs.push({ type: 'err', text: `Line ${r.idx + 1}: ${r.error}` }); });
+  lines.forEach(r => { if (r.error) msgs.push({ type: 'err',
+    text: t('validation.linePrefix', { n: iso(trimNum(r.idx + 1, 0)), message: r.error }) }); });
 
   /* recipe sanity checks */
-  if (!f.lines.length) msgs.push({ type: 'warn', text: 'This formulation has no ingredients yet.' });
+  if (!f.lines.length) msgs.push({ type: 'warn', text: t('validation.noLines') });
   if (f.mode === 'percent' && f.lines.length && Math.abs(pctSum - 100) > 0.005) {
     msgs.push({
       type: 'warn',
-      text: `Percentages add up to ${trimNum(pctSum, 3)}% instead of 100%. `
-          + `Costs are calculated on the stated percentages of a ${trimNum(num(f.batchSize))} ${f.batchUnit} batch, so the batch will be ${pctSum > 100 ? 'over' : 'under'}-filled.`,
+      text: t(pctSum > 100 ? 'validation.percentSumOverfilled' : 'validation.percentSumUnderfilled', {
+        sum: iso(trimNum(pctSum, 3)),
+        batch: iso(trimNum(num(f.batchSize)) + ' ' + unitLabel(f.batchUnit)),
+      }),
     });
   }
   if (f.mode === 'absolute' && f.lines.length && !mixedDims && batchBase > 0
       && Math.abs(qtyInBatchDim - batchBase) / batchBase > 0.005) {
     msgs.push({
       type: 'warn',
-      text: `Ingredients total ${fmtQty(qtyInBatchDim, batchU.dim)} but the batch size is `
-          + `${fmtQty(batchBase, batchU.dim)}. Per-unit costs assume the stated batch size.`,
+      text: t('validation.quantityMismatch', {
+        total: iso(fmtQty(qtyInBatchDim, batchU.dim)),
+        batch: iso(fmtQty(batchBase, batchU.dim)),
+      }),
     });
   }
 
@@ -252,12 +268,13 @@ function compute(f) {
   const fillU = UNITS[f.fillUnit] || UNITS.g;
   let unitsPerBatch = 0;
   if (fillU.dim !== batchU.dim) {
-    msgs.push({ type: 'err', text: `Fill size is in ${f.fillUnit} but the batch is measured in ${f.batchUnit}. Use matching units.` });
+    msgs.push({ type: 'err', text: t('validation.fillUnitMismatch', {
+      fillUnit: iso(unitLabel(f.fillUnit)), batchUnit: iso(unitLabel(f.batchUnit)) }) });
   } else if (num(f.fillSize) > 0) {
     unitsPerBatch = Math.floor(batchBase / (num(f.fillSize) * fillU.base));
   }
   if (unitsPerBatch < 1) {
-    msgs.push({ type: 'warn', text: 'Batch yields less than one saleable unit — check batch size and fill size.' });
+    msgs.push({ type: 'warn', text: t('validation.tooFewUnits') });
   }
 
   /* money */
@@ -306,14 +323,14 @@ function renderIngredients() {
     const baseLabel = UNITS[i.unit].dim === 'mass' ? 'g' : UNITS[i.unit].dim === 'volume' ? 'mL' : 'pcs';
     const used = state.formulations.filter(f => f.lines.some(l => l.ingredientId === i.id)).length;
     return `<tr data-id="${i.id}">
-      <td><input data-field="name" value="${esc(i.name)}" placeholder="e.g. Glycerin"></td>
-      <td><input data-field="code" value="${esc(i.code)}" placeholder="SKU"></td>
-      <td><input data-field="supplier" value="${esc(i.supplier)}" placeholder="Supplier"></td>
-      <td><input data-field="price" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(i.price))}"></td>
-      <td><select data-field="unit">${opts(PRICE_UNITS, i.unit)}</select></td>
-      <td><input data-field="density" type="number" min="0" step="any" value="${esc(i.density)}" placeholder="—"></td>
-      <td class="num" title="${used ? `Used in ${used} formulation(s)` : 'Not used yet'}">${money(perBase)} / ${baseLabel}</td>
-      <td class="act"><button class="danger small" data-act="del-ing" type="button" title="Delete">✕</button></td>
+      <td data-label="${esc(t('ing.col.name'))}" data-span="full"><input data-field="name" dir="auto" value="${esc(i.name)}" placeholder="${esc(t('ingredients.placeholder.name'))}"></td>
+      <td data-label="${esc(t('ing.col.code'))}"><input data-field="code" dir="auto" value="${esc(i.code)}" placeholder="${esc(t('ingredients.placeholder.code'))}"></td>
+      <td data-label="${esc(t('ing.col.supplier'))}"><input data-field="supplier" dir="auto" value="${esc(i.supplier)}" placeholder="${esc(t('ingredients.placeholder.supplier'))}"></td>
+      <td data-label="${esc(t('ing.col.price'))}"><input data-field="price" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(i.price))}"></td>
+      <td data-label="${esc(t('ing.col.per'))}"><select data-field="unit">${opts(PRICE_UNITS, i.unit)}</select></td>
+      <td data-label="${esc(t('ing.col.density'))}"><input data-field="density" ${NUMF} value="${esc(i.density)}" placeholder="${esc(t('ingredients.placeholder.density'))}"></td>
+      <td class="num" data-label="${esc(t('ing.col.unitcost'))}" title="${esc(used ? t('ingredients.usedIn', { n: used }) : t('ingredients.notUsed'))}">${iso(t('ingredients.unitCostCell', { money: money(perBase), baseUnit: unitLabel(baseLabel) }))}</td>
+      <td class="act"><button class="danger small" data-act="del-ing" type="button" title="${esc(t('common.deleteTitle'))}">✕</button></td>
     </tr>`;
   }).join('');
 }
@@ -325,8 +342,10 @@ function renderFormList() {
   list.innerHTML = state.formulations.map(f => {
     const c = compute(f);
     return `<li class="${f.id === selectedId ? 'active' : ''}">
-      <button data-id="${f.id}" type="button">${esc(f.name || 'Untitled')}
-        <span class="meta">${Number.isFinite(c.costPerUnit) ? money(c.costPerUnit) + ' / unit cost' : 'not costed'}</span>
+      <button data-id="${f.id}" type="button">${esc(f.name || t('defaults.untitled'))}
+        <span class="meta">${Number.isFinite(c.costPerUnit)
+          ? iso(t('formList.unitCostSuffix', { money: money(c.costPerUnit) }))
+          : esc(t('formList.notCosted'))}</span>
       </button></li>`;
   }).join('');
 }
@@ -334,7 +353,7 @@ function renderFormList() {
 function renderEditor() {
   const ed = $('#editor');
   const f = getForm(selectedId);
-  if (!f) { ed.innerHTML = '<p class="empty">Select a formulation, or create one.</p>'; return; }
+  if (!f) { ed.innerHTML = `<p class="empty">${esc(t('editor.emptyState'))}</p>`; return; }
 
   const batchDim = UNITS[f.batchUnit].dim;
   const fillOpts = unitsOfDim(batchDim);
@@ -343,56 +362,56 @@ function renderEditor() {
   ed.innerHTML = `
     <section class="card">
       <div class="card-head">
-        <h2>Product</h2>
+        <h2>${esc(t('editor.heading.product'))}</h2>
         <div class="actions">
-          <button class="ghost small" data-act="print" type="button">Print cost sheet</button>
-          <button class="ghost small" data-act="dup" type="button">Duplicate</button>
-          <button class="danger small" data-act="del-form" type="button">Delete</button>
+          <button class="ghost small" data-act="print" type="button">${esc(t('editor.action.print'))}</button>
+          <button class="ghost small" data-act="dup" type="button">${esc(t('editor.action.duplicate'))}</button>
+          <button class="danger small" data-act="del-form" type="button">${esc(t('editor.action.delete'))}</button>
         </div>
       </div>
       <div class="fields">
-        <div class="field" style="grid-column:span 2">
-          <label>Product name</label>
-          <input data-f="name" value="${esc(f.name)}" placeholder="e.g. Hydrating Face Cream">
+        <div class="field span2">
+          <label>${esc(t('editor.field.productName'))}</label>
+          <input data-f="name" dir="auto" value="${esc(f.name)}" placeholder="${esc(t('editor.placeholder.productName'))}">
         </div>
-        <div class="field"><label>Product code</label>
-          <input data-f="code" value="${esc(f.code)}" placeholder="FC-001"></div>
-        <div class="field"><label>Batch size</label>
+        <div class="field"><label>${esc(t('editor.field.productCode'))}</label>
+          <input data-f="code" dir="auto" value="${esc(f.code)}" placeholder="${esc(t('editor.placeholder.productCode'))}"></div>
+        <div class="field"><label>${esc(t('editor.field.batchSize'))}</label>
           <div class="row">
-            <input data-f="batchSize" type="number" min="0" step="any" value="${esc(f.batchSize)}">
+            <input data-f="batchSize" ${NUMF} value="${esc(f.batchSize)}">
             <select data-f="batchUnit" data-rerender="1">${opts(BATCH_UNITS, f.batchUnit)}</select>
           </div>
         </div>
-        <div class="field"><label>Fill size per unit</label>
+        <div class="field"><label>${esc(t('editor.field.fillSize'))}</label>
           <div class="row">
-            <input data-f="fillSize" type="number" min="0" step="any" value="${esc(f.fillSize)}">
+            <input data-f="fillSize" ${NUMF} value="${esc(f.fillSize)}">
             <select data-f="fillUnit">${opts(fillOpts, f.fillUnit)}</select>
           </div>
         </div>
-        <div class="field"><label>Overage / loss %</label>
-          <input data-f="overagePct" type="number" min="0" step="any" value="${esc(f.overagePct)}"></div>
+        <div class="field"><label>${esc(t('editor.field.overagePct'))}</label>
+          <input data-f="overagePct" ${NUMF} value="${esc(f.overagePct)}"></div>
       </div>
     </section>
 
     <section class="card">
       <div class="card-head">
-        <h2>Formulation</h2>
+        <h2>${esc(t('editor.heading.formulation'))}</h2>
         <div class="actions no-print">
           <span class="seg">
-            <button data-act="mode" data-mode="percent" class="${f.mode === 'percent' ? 'on' : ''}" type="button">% of batch</button>
-            <button data-act="mode" data-mode="absolute" class="${f.mode === 'absolute' ? 'on' : ''}" type="button">Quantity per batch</button>
+            <button data-act="mode" data-mode="percent" class="${f.mode === 'percent' ? 'on' : ''}" type="button">${esc(t('editor.mode.percent'))}</button>
+            <button data-act="mode" data-mode="absolute" class="${f.mode === 'absolute' ? 'on' : ''}" type="button">${esc(t('editor.mode.absolute'))}</button>
           </span>
-          <button class="primary small" data-act="add-line" type="button">+ Ingredient</button>
+          <button class="primary small" data-act="add-line" type="button">${esc(t('editor.action.addLine'))}</button>
         </div>
       </div>
       <div class="table-wrap">
         <table class="grid lines-table">
           <thead><tr>
-            <th style="width:8%">Phase</th>
-            <th style="width:34%">Ingredient</th>
-            <th style="width:16%">${f.mode === 'percent' ? '% w/w' : 'Quantity'}</th>
-            <th style="width:16%">Required</th>
-            <th style="width:18%">Cost</th>
+            <th style="width:8%">${esc(t('lines.th.phase'))}</th>
+            <th style="width:34%">${esc(t('lines.th.ingredient'))}</th>
+            <th style="width:16%">${esc(f.mode === 'percent' ? t('lines.th.percentWw') : t('lines.th.quantity'))}</th>
+            <th style="width:16%">${esc(t('lines.th.required'))}</th>
+            <th style="width:18%">${esc(t('lines.th.cost'))}</th>
             <th style="width:8%"></th>
           </tr></thead>
           <tbody>${renderLines(f)}</tbody>
@@ -402,20 +421,20 @@ function renderEditor() {
     </section>
 
     <section class="card">
-      <h2 style="margin-bottom:12px">Other costs &amp; pricing</h2>
+      <h2 style="margin-bottom:12px">${esc(t('editor.heading.otherCosts'))}</h2>
       <div class="fields">
-        <div class="field"><label>Packaging / unit</label>
+        <div class="field"><label>${esc(t('editor.field.packagingPerUnit'))}</label>
           <input data-f="packagingPerUnit" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(f.packagingPerUnit))}"></div>
-        <div class="field"><label>Labour / batch</label>
+        <div class="field"><label>${esc(t('editor.field.labourPerBatch'))}</label>
           <input data-f="laborPerBatch" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(f.laborPerBatch))}"></div>
-        <div class="field"><label>Overhead %</label>
-          <input data-f="overheadPct" type="number" min="0" step="any" value="${esc(f.overheadPct)}"></div>
-        <div class="field"><label>Markup % on cost</label>
-          <input data-f="markupPct" type="number" min="0" step="any" value="${esc(f.markupPct)}"></div>
-        <div class="field"><label>VAT %</label>
-          <input data-f="vatPct" type="number" min="0" step="any" value="${esc(f.vatPct)}"></div>
-        <div class="field wide"><label>Notes</label>
-          <textarea data-f="notes" rows="2" placeholder="Process notes, pH, stability…">${esc(f.notes)}</textarea></div>
+        <div class="field"><label>${esc(t('editor.field.overheadPct'))}</label>
+          <input data-f="overheadPct" ${NUMF} value="${esc(f.overheadPct)}"></div>
+        <div class="field"><label>${esc(t('editor.field.markupPct'))}</label>
+          <input data-f="markupPct" ${NUMF} value="${esc(f.markupPct)}"></div>
+        <div class="field"><label>${esc(t('editor.field.vatPct'))}</label>
+          <input data-f="vatPct" ${NUMF} value="${esc(f.vatPct)}"></div>
+        <div class="field wide"><label>${esc(t('editor.field.notes'))}</label>
+          <textarea data-f="notes" dir="auto" rows="2" placeholder="${esc(t('editor.placeholder.notes'))}">${esc(f.notes)}</textarea></div>
       </div>
     </section>
 
@@ -428,25 +447,25 @@ function renderLines(f) {
   const options = state.ingredients
     .slice()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
-    .map(i => `<option value="${i.id}">${esc(i.name || 'Unnamed')}${i.code ? ' (' + esc(i.code) + ')' : ''}</option>`)
+    .map(i => `<option value="${i.id}">${esc(i.name || t('defaults.unnamed'))}${i.code ? ' (' + esc(i.code) + ')' : ''}</option>`)
     .join('');
 
   if (!f.lines.length) {
-    return `<tr><td colspan="6" class="empty small">No ingredients in this formulation yet.</td></tr>`;
+    return `<tr><td colspan="6" class="empty small empty-cell">${esc(t('lines.empty'))}</td></tr>`;
   }
   return f.lines.map((l, idx) => `<tr data-idx="${idx}">
-    <td><input data-lf="phase" value="${esc(l.phase)}" placeholder="A"></td>
-    <td><select data-lf="ingredientId">
-        <option value="">— choose —</option>${options}
+    <td data-label="${esc(t('lines.th.phase'))}"><input data-lf="phase" dir="auto" value="${esc(l.phase)}" placeholder="${esc(t('lines.placeholder.phase'))}"></td>
+    <td data-label="${esc(t('lines.th.ingredient'))}" data-span="full"><select data-lf="ingredientId" dir="auto">
+        <option value="">${esc(t('lines.chooseOption'))}</option>${options}
       </select></td>
-    <td>${f.mode === 'percent'
-        ? `<input data-lf="value" type="number" min="0" step="any" value="${esc(l.value)}">`
-        : `<div class="row" style="display:flex;gap:4px">
-             <input data-lf="value" type="number" min="0" step="any" value="${esc(l.value)}">
-             <select data-lf="unit" style="flex:0 0 70px">${opts(PRICE_UNITS, l.unit)}</select>
+    <td data-label="${esc(f.mode === 'percent' ? t('lines.th.percentWw') : t('lines.th.quantity'))}">${f.mode === 'percent'
+        ? `<input data-lf="value" ${NUMF} value="${esc(l.value)}">`
+        : `<div class="lf-row">
+             <input data-lf="value" ${NUMF} value="${esc(l.value)}">
+             <select data-lf="unit" class="lf-unit">${opts(PRICE_UNITS, l.unit)}</select>
            </div>`}</td>
-    <td class="num" data-line-qty="${idx}">—</td>
-    <td class="num" data-line-cost="${idx}">—</td>
+    <td class="num" data-label="${esc(t('lines.th.required'))}" data-line-qty="${idx}">${esc(t('common.emptyValue'))}</td>
+    <td class="num" data-label="${esc(t('lines.th.cost'))}" data-line-cost="${idx}">${esc(t('common.emptyValue'))}</td>
     <td class="act"><button class="danger small" data-act="del-line" type="button">✕</button></td>
   </tr>`).join('');
 }
@@ -460,16 +479,19 @@ function renderResults() {
   c.lines.forEach(r => {
     const qc = $(`[data-line-qty="${r.idx}"]`);
     const cc = $(`[data-line-cost="${r.idx}"]`);
-    if (qc) qc.innerHTML = r.error ? '<span class="line-err">—</span>' : fmtQty(r.grossBase, r.dim);
-    if (cc) cc.innerHTML = r.error ? `<span class="line-err">${esc(r.error)}</span>` : money(r.cost);
+    if (qc) qc.innerHTML = r.error ? `<span class="line-err">${esc(t('common.emptyValue'))}</span>` : iso(fmtQty(r.grossBase, r.dim));
+    if (cc) cc.innerHTML = r.error ? `<span class="line-err">${esc(r.error)}</span>` : iso(money(r.cost));
   });
   const badge = $('#sum-badge');
   if (badge) {
     if (f.mode === 'percent') {
       const ok = Math.abs(c.pctSum - 100) <= 0.005;
-      badge.innerHTML = `<span class="badge ${ok ? 'ok' : 'bad'}">Total ${trimNum(c.pctSum, 3)}%</span>`;
+      badge.innerHTML = `<span class="badge ${ok ? 'ok' : 'bad'}">${esc(t('badge.totalPercent', { sum: trimNum(c.pctSum, 3) }))}</span>`;
     } else {
-      badge.innerHTML = `<span class="badge ${c.mixedDims ? 'bad' : 'ok'}">Total ${fmtQty(c.qtyInBatchDim, c.batchDim)}${c.mixedDims ? ' (+ other units)' : ''} of ${fmtQty(c.batchBase, c.batchDim)} batch</span>`;
+      badge.innerHTML = `<span class="badge ${c.mixedDims ? 'bad' : 'ok'}">${esc(t('badge.totalQuantity', {
+        sum: fmtQty(c.qtyInBatchDim, c.batchDim),
+        extra: c.mixedDims ? t('badge.mixedUnitsSuffix') : '',
+        batch: fmtQty(c.batchBase, c.batchDim) }))}</span>`;
     }
   }
 
@@ -484,10 +506,10 @@ function renderResults() {
     const share = c.materialCost > 0 ? r.cost / c.materialCost * 100 : 0;
     return `<tr>
       <td>${esc(r.line.phase || '')}</td>
-      <td>${r.ing ? esc(r.ing.name || 'Unnamed') : '<i>missing</i>'}</td>
-      <td class="num">${r.error ? '—' : fmtQty(r.grossBase, r.dim)}</td>
-      <td class="num">${r.error ? '—' : money(r.cost)}</td>
-      <td class="num">${r.error ? '—' : trimNum(share, 1) + '%'}</td>
+      <td>${r.ing ? esc(r.ing.name || t('defaults.unnamed')) : `<i>${esc(t('results.missingIngredient'))}</i>`}</td>
+      <td class="num">${r.error ? esc(t('common.emptyValue')) : iso(fmtQty(r.grossBase, r.dim))}</td>
+      <td class="num">${r.error ? esc(t('common.emptyValue')) : iso(money(r.cost))}</td>
+      <td class="num">${r.error ? esc(t('common.emptyValue')) : iso(trimNum(share, 1) + '%')}</td>
       <td style="width:22%"><div class="bar" style="width:${Math.max(0, Math.min(100, share))}%"></div></td>
     </tr>`;
   }).join('');
@@ -502,60 +524,60 @@ function renderResults() {
   const broken = c.lines.filter(r => r.error).length;
 
   $('#results').innerHTML = `
-    <div class="card-head"><h2>Cost &amp; price</h2></div>
+    <div class="card-head"><h2>${esc(t('results.heading'))}</h2></div>
 
-    ${broken ? `<div class="msg err" style="margin-bottom:12px">${broken} ingredient line${broken > 1 ? 's' : ''} could not be costed — every figure below is incomplete. See the problems listed at the bottom.</div>` : ''}
+    ${broken ? `<div class="msg err" style="margin-bottom:12px">${esc(t('results.brokenLines', { n: broken, s: broken > 1 ? 's' : '' }))}</div>` : ''}
 
     <div class="totals">
-      ${tile('Batch size', fmtQty(c.batchBase, c.batchDim))}
-      ${tile('Units per batch', trimNum(c.unitsPerBatch, 0))}
-      ${tile('Total batch cost', money(c.totalCost), c.totalCost)}
-      ${tile('Cost per unit', perUnit(c.costPerUnit), c.costPerUnit)}
-      ${tile('Price ex VAT', perUnit(c.priceExVat), c.priceExVat, true)}
-      ${tile('Price incl. VAT', perUnit(c.priceIncVat), c.priceIncVat, true)}
+      ${tile(t('results.tile.batchSize'), iso(fmtQty(c.batchBase, c.batchDim)))}
+      ${tile(t('results.tile.unitsPerBatch'), iso(trimNum(c.unitsPerBatch, 0)))}
+      ${tile(t('results.tile.totalBatchCost'), iso(money(c.totalCost)), c.totalCost)}
+      ${tile(t('results.tile.costPerUnit'), iso(perUnit(c.costPerUnit)), c.costPerUnit)}
+      ${tile(t('results.tile.priceExVat'), iso(perUnit(c.priceExVat)), c.priceExVat, true)}
+      ${tile(t('results.tile.priceIncVat'), iso(perUnit(c.priceIncVat)), c.priceIncVat, true)}
     </div>
 
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px" class="split">
       <div>
-        <h3 style="margin-bottom:6px">Cost build-up (per batch)</h3>
+        <h3 style="margin-bottom:6px">${esc(t('results.buildUpHeading'))}</h3>
         <table class="plain">
           <tbody>
-            <tr><td>Raw materials${num(f.overagePct) ? ` <span style="color:var(--muted)">(incl. ${trimNum(num(f.overagePct))}% overage)</span>` : ''}</td><td class="num">${money(c.materialCost)}</td></tr>
-            <tr><td>Packaging (${trimNum(c.unitsPerBatch, 0)} × ${money(num(f.packagingPerUnit))})</td><td class="num">${money(c.packaging)}</td></tr>
-            <tr><td>Labour</td><td class="num">${money(c.labor)}</td></tr>
-            <tr><td>Overhead (${trimNum(num(f.overheadPct))}%)</td><td class="num">${money(c.overhead)}</td></tr>
+            <tr><td>${esc(t('results.row.rawMaterials'))}${num(f.overagePct) ? ` <span style="color:var(--muted)">${esc(t('results.row.overageNote', { pct: trimNum(num(f.overagePct)) }))}</span>` : ''}</td><td class="num">${iso(money(c.materialCost))}</td></tr>
+            <tr><td>${esc(t('results.row.packaging', { units: trimNum(c.unitsPerBatch, 0), price: money(num(f.packagingPerUnit)) }))}</td><td class="num">${iso(money(c.packaging))}</td></tr>
+            <tr><td>${esc(t('results.row.labour'))}</td><td class="num">${iso(money(c.labor))}</td></tr>
+            <tr><td>${esc(t('results.row.overhead', { pct: trimNum(num(f.overheadPct)) }))}</td><td class="num">${iso(money(c.overhead))}</td></tr>
           </tbody>
-          <tfoot><tr><td>Total batch cost</td><td class="num">${money(c.totalCost)}</td></tr></tfoot>
+          <tfoot><tr><td>${esc(t('results.row.totalBatchCost'))}</td><td class="num">${iso(money(c.totalCost))}</td></tr></tfoot>
         </table>
       </div>
       <div>
-        <h3 style="margin-bottom:6px">Per unit (${trimNum(num(f.fillSize))} ${f.fillUnit})</h3>
+        <h3 style="margin-bottom:6px">${esc(t('results.perUnitHeading', { size: trimNum(num(f.fillSize)), unit: unitLabel(f.fillUnit) }))}</h3>
         <table class="plain">
           <tbody>
-            <tr><td>Raw materials</td><td class="num">${perUnit(c.materialPerUnit)}</td></tr>
-            <tr><td>Full cost</td><td class="num">${perUnit(c.costPerUnit)}</td></tr>
-            <tr><td>Markup (${trimNum(num(f.markupPct))}%)</td><td class="num">${perUnit(c.priceExVat - c.costPerUnit)}</td></tr>
-            <tr><td>Selling price ex VAT</td><td class="num">${perUnit(c.priceExVat)}</td></tr>
-            <tr><td>Gross margin</td><td class="num">${Number.isFinite(c.grossMargin) ? trimNum(c.grossMargin, 1) + '%' : '—'}</td></tr>
-            <tr><td>VAT (${trimNum(num(f.vatPct))}%)</td><td class="num">${perUnit(c.priceIncVat - c.priceExVat)}</td></tr>
+            <tr><td>${esc(t('results.row.rawMaterials'))}</td><td class="num">${iso(perUnit(c.materialPerUnit))}</td></tr>
+            <tr><td>${esc(t('results.row.fullCost'))}</td><td class="num">${iso(perUnit(c.costPerUnit))}</td></tr>
+            <tr><td>${esc(t('results.row.markup', { pct: trimNum(num(f.markupPct)) }))}</td><td class="num">${iso(perUnit(c.priceExVat - c.costPerUnit))}</td></tr>
+            <tr><td>${esc(t('results.row.sellingPriceExVat'))}</td><td class="num">${iso(perUnit(c.priceExVat))}</td></tr>
+            <tr><td>${esc(t('results.row.grossMargin'))}</td><td class="num">${Number.isFinite(c.grossMargin) ? iso(trimNum(c.grossMargin, 1) + '%') : esc(t('common.emptyValue'))}</td></tr>
+            <tr><td>${esc(t('results.row.vat', { pct: trimNum(num(f.vatPct)) }))}</td><td class="num">${iso(perUnit(c.priceIncVat - c.priceExVat))}</td></tr>
           </tbody>
-          <tfoot><tr><td>Price incl. VAT</td><td class="num">${perUnit(c.priceIncVat)}</td></tr></tfoot>
+          <tfoot><tr><td>${esc(t('results.row.priceIncVat'))}</td><td class="num">${iso(perUnit(c.priceIncVat))}</td></tr></tfoot>
         </table>
         <table class="plain" style="margin-top:10px">
           <tbody>
-            <tr><td>Revenue per batch (ex VAT)</td><td class="num">${Number.isFinite(c.revenuePerBatch) ? money(c.revenuePerBatch) : '—'}</td></tr>
-            <tr><td>Profit per batch</td><td class="num">${Number.isFinite(c.profitPerBatch) ? money(c.profitPerBatch) : '—'}</td></tr>
+            <tr><td>${esc(t('results.row.revenuePerBatch'))}</td><td class="num">${Number.isFinite(c.revenuePerBatch) ? iso(money(c.revenuePerBatch)) : esc(t('common.emptyValue'))}</td></tr>
+            <tr><td>${esc(t('results.row.profitPerBatch'))}</td><td class="num">${Number.isFinite(c.profitPerBatch) ? iso(money(c.profitPerBatch)) : esc(t('common.emptyValue'))}</td></tr>
           </tbody>
         </table>
       </div>
     </div>
 
-    <h3 style="margin:18px 0 6px">Material cost breakdown</h3>
-    <div class="table-wrap" style="box-shadow:none">
-      <table class="plain" style="min-width:560px">
-        <thead><tr><th>Phase</th><th>Ingredient</th><th class="num">Quantity</th><th class="num">Cost</th><th class="num">Share</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6" class="empty small">Nothing to cost yet.</td></tr>'}</tbody>
-        <tfoot><tr><td colspan="3">Total raw material</td><td class="num">${money(c.materialCost)}</td><td class="num">100%</td><td></td></tr></tfoot>
+    <h3 style="margin:18px 0 6px">${esc(t('results.breakdownHeading'))}</h3>
+    <div class="table-wrap breakdown-wrap">
+      <table class="plain breakdown">
+        <thead><tr><th>${esc(t('results.breakdown.th.phase'))}</th><th>${esc(t('results.breakdown.th.ingredient'))}</th><th class="num">${esc(t('results.breakdown.th.quantity'))}</th><th class="num">${esc(t('results.breakdown.th.cost'))}</th><th class="num">${esc(t('results.breakdown.th.share'))}</th><th></th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="6" class="empty small">${esc(t('results.breakdown.empty'))}</td></tr>`}</tbody>
+        <tfoot><tr><td colspan="3">${esc(t('results.breakdown.totalRawMaterial'))}</td><td class="num">${iso(money(c.materialCost))}</td><td class="num">${iso(trimNum(100, 0) + '%')}</td><td></td></tr></tfoot>
       </table>
     </div>
 
@@ -616,19 +638,20 @@ $('#ing-body').addEventListener('click', e => {
   const ing = getIng(tr.dataset.id); if (!ing) return;
   const used = state.formulations.filter(f => f.lines.some(l => l.ingredientId === ing.id));
   if (used.length) {
-    alert(`"${ing.name || 'This ingredient'}" is used in:\n\n` +
-      used.map(f => '• ' + (f.name || 'Untitled')).join('\n') +
-      `\n\nRemove it from those formulations first.`);
+    alert(t('dialog.ingredientInUse', {
+      name: ing.name || t('defaults.thisIngredientCap'),
+      list: used.map(f => t('dialog.bulletPrefix') + (f.name || t('defaults.untitled'))).join('\n'),
+    }));
     return;
   }
-  if (!confirm(`Delete "${ing.name || 'this ingredient'}"?`)) return;
+  if (!confirm(t('dialog.confirmDeleteIngredient', { name: ing.name || t('defaults.thisIngredient') }))) return;
   state.ingredients = state.ingredients.filter(i => i.id !== ing.id);
   save(); renderIngredients();
 });
 
 /* ---- formulation list ---- */
 $('#btn-add-form').addEventListener('click', () => {
-  const f = normalise({ formulations: [{ name: 'New product', markupPct: 60, overheadPct: 10, lines: [] }] }).formulations[0];
+  const f = normalise({ formulations: [{ name: t('defaults.newProduct'), markupPct: 60, overheadPct: 10, lines: [] }] }).formulations[0];
   state.formulations.push(f);
   selectedId = f.id;
   save(); render();
@@ -646,7 +669,7 @@ $('#editor').addEventListener('input', e => {
 
   if (t.dataset.f) {
     const key = t.dataset.f;
-    f[key] = (t.type === 'number' || t.dataset.money) ? num(t.value) : t.value;
+    f[key] = (t.dataset.num || t.dataset.money) ? num(t.value) : t.value;
     save();
     if (key === 'name') { renderFormList(); return renderResults(); }
     return renderResults();
@@ -655,7 +678,7 @@ $('#editor').addEventListener('input', e => {
     const tr = t.closest('tr[data-idx]'); if (!tr) return;
     const l = f.lines[+tr.dataset.idx]; if (!l) return;
     const key = t.dataset.lf;
-    l[key] = (t.type === 'number' || t.dataset.money) ? num(t.value) : t.value;
+    l[key] = (t.dataset.num || t.dataset.money) ? num(t.value) : t.value;
     save(); renderFormList(); renderResults();
   }
 });
@@ -687,13 +710,13 @@ $('#editor').addEventListener('click', e => {
   else if (act === 'dup') {
     const copy = JSON.parse(JSON.stringify(f));
     copy.id = uid();
-    copy.name = f.name + ' (copy)';
+    copy.name = f.name + t('defaults.copySuffix');
     state.formulations.push(copy);
     selectedId = copy.id;
     save(); render();
   }
   else if (act === 'del-form') {
-    if (!confirm(`Delete "${f.name || 'this formulation'}"?`)) return;
+    if (!confirm(t('dialog.confirmDeleteFormulation', { name: f.name || t('defaults.thisFormulation') }))) return;
     state.formulations = state.formulations.filter(x => x.id !== f.id);
     selectedId = state.formulations.length ? state.formulations[0].id : null;
     save(); render();
@@ -726,6 +749,19 @@ function convertMode(f, mode) {
   f.mode = mode;
 }
 
+/* ---- language ---- */
+function syncLangButtons() {
+  $$('#lang-seg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.lang === getLang()));
+}
+$('#lang-seg').addEventListener('click', e => {
+  const b = e.target.closest('button[data-lang]');
+  if (!b || b.dataset.lang === getLang()) return;
+  /* setLang swaps <html lang/dir> and the static chrome; render() redraws
+     everything this file owns, which is where the formatted numbers live. */
+  setLang(b.dataset.lang, () => { syncLangButtons(); render(); });
+});
+
 /* ---- how-to dialog ---- */
 const howto = $('#howto');
 $('#btn-howto').addEventListener('click', () => {
@@ -735,6 +771,19 @@ $('#btn-howto').addEventListener('click', () => {
 howto.addEventListener('click', e => {
   /* a click on the dialog element itself is a click on the backdrop */
   if (e.target === howto || e.target.closest('[data-close]')) howto.close();
+});
+
+/* The how-to screenshots are crops of the 1180px desktop page. On a narrow
+   screen they are illegible when squeezed to fit, so each figure keeps a
+   readable width and scrolls sideways inside a wrapper built here. */
+document.querySelectorAll('#howto .shot').forEach(fig => {
+  const box = document.createElement('div');
+  box.className = 'shot-scroll';
+  box.tabIndex = 0;                       /* a scroll region must be keyboard reachable */
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', 'Screenshot, scrolls sideways');
+  fig.parentNode.insertBefore(box, fig);
+  box.appendChild(fig);
 });
 
 /* Money fields show grouped digits when idle and a plain number while editing. */
@@ -764,14 +813,14 @@ $('#file-import').addEventListener('change', e => {
     try {
       const data = JSON.parse(fr.result);
       if (!data || (!Array.isArray(data.ingredients) && !Array.isArray(data.formulations))) {
-        throw new Error('Unrecognised file');
+        throw new Error(t('error.unrecognisedFile'));
       }
-      if (!confirm('Replace all current data with the contents of this file?')) return;
+      if (!confirm(t('dialog.confirmImport'))) return;
       state = normalise(data);
       selectedId = state.formulations.length ? state.formulations[0].id : null;
       save(); render();
     } catch (err) {
-      alert('Could not import that file: ' + err.message);
+      alert(t('dialog.importError', { message: err.message }));
     }
   };
   fr.readAsText(file);
@@ -779,7 +828,7 @@ $('#file-import').addEventListener('change', e => {
 });
 $('#btn-demo').addEventListener('click', () => {
   if (state.ingredients.length || state.formulations.length) {
-    if (!confirm('Replace all current data with the demo data set?')) return;
+    if (!confirm(t('dialog.confirmDemo'))) return;
   }
   state = normalise(demoData());
   selectedId = state.formulations[0].id;
@@ -788,51 +837,59 @@ $('#btn-demo').addEventListener('click', () => {
 
 /* ------------------------------------------------------------------ demo */
 function demoData() {
-  const ing = (name, code, supplier, price, unit, density) =>
-    ({ id: uid(), name, code, supplier, price, unit, density: density == null ? '' : density });
+  /* INCI names stay in Latin script in both languages: that is how they appear
+     on Iranian supplier invoices, COAs and IFDA dossiers, and transliterating
+     them would break matching against a supplier catalogue. */
+  const ing = (key, code, supplier, price, unit, density) =>
+    ({ id: uid(), key, name: t('demo.ingredient.' + key), code, supplier,
+       price, unit, density: density == null ? '' : density });
 
   /* Illustrative Rial prices only — replace them with your own supplier quotes. */
   const list = [
-    ing('Aqua (purified water)', 'RM-001', 'In-house', 600000, 'kg'),
-    ing('Glycerin 99.5%', 'RM-002', 'Oleo Chem', 2800000, 'kg'),
-    ing('Cetearyl alcohol', 'RM-003', 'Oleo Chem', 4200000, 'kg'),
-    ing('Caprylic/capric triglyceride', 'RM-004', 'Lipid Co', 6500000, 'kg'),
-    ing('Shea butter, refined', 'RM-005', 'Lipid Co', 9000000, 'kg'),
-    ing('Glyceryl stearate SE', 'RM-006', 'Emul Ltd', 7400000, 'kg'),
-    ing('Niacinamide USP', 'RM-007', 'Vita Fine', 28000000, 'kg'),
-    ing('Tocopheryl acetate', 'RM-008', 'Vita Fine', 65000000, 'kg'),
-    ing('Phenoxyethanol + EHG', 'RM-009', 'Preserv AG', 12000000, 'kg'),
-    ing('Xanthan gum', 'RM-010', 'Hydro Gums', 22000000, 'kg'),
-    ing('Fragrance, neroli', 'RM-011', 'Aroma House', 120000000, 'L', 0.92),
+    ing('aqua', 'RM-001', t('demo.supplier.inHouse'), 600000, 'kg'),
+    ing('glycerin', 'RM-002', 'Oleo Chem', 2800000, 'kg'),
+    ing('cetearylAlcohol', 'RM-003', 'Oleo Chem', 4200000, 'kg'),
+    ing('caprylicCapric', 'RM-004', 'Lipid Co', 6500000, 'kg'),
+    ing('sheaButter', 'RM-005', 'Lipid Co', 9000000, 'kg'),
+    ing('glycerylStearate', 'RM-006', 'Emul Ltd', 7400000, 'kg'),
+    ing('niacinamide', 'RM-007', 'Vita Fine', 28000000, 'kg'),
+    ing('tocopherylAcetate', 'RM-008', 'Vita Fine', 65000000, 'kg'),
+    ing('phenoxyethanol', 'RM-009', 'Preserv AG', 12000000, 'kg'),
+    ing('xanthanGum', 'RM-010', 'Hydro Gums', 22000000, 'kg'),
+    ing('fragranceNeroli', 'RM-011', 'Aroma House', 120000000, 'L', 0.92),
   ];
-  const by = n => list.find(i => i.name.startsWith(n)).id;
-  const L = (name, phase, value) => ({ ingredientId: by(name), phase, value, unit: 'g' });
+  const by = key => {
+    const hit = list.find(i => i.key === key);
+    if (!hit) throw new Error('demo data: unknown ingredient key ' + key);
+    return hit.id;
+  };
+  const L = (key, phase, value) => ({ ingredientId: by(key), phase, value, unit: 'g' });
 
   return {
     settings: { currency: 'IRR' },
     ingredients: list,
     formulations: [
       {
-        id: uid(), name: 'Hydrating Face Cream', code: 'FC-001', mode: 'percent',
+        id: uid(), name: t('demo.product.faceCream'), code: 'FC-001', mode: 'percent',
         batchSize: 100, batchUnit: 'kg', overagePct: 2,
         fillSize: 50, fillUnit: 'g', packagingPerUnit: 850000, laborPerBatch: 220000000,
         overheadPct: 12, markupPct: 120, vatPct: 10,
-        notes: 'Phase A heated to 75 °C, phase B added under homogenisation, cool to 40 °C before phase C.',
+        notes: t('demo.notes.faceCream'),
         lines: [
-          L('Aqua', 'A', 68.5), L('Glycerin', 'A', 5), L('Xanthan', 'A', 0.3),
-          L('Cetearyl', 'B', 4), L('Caprylic', 'B', 8), L('Shea', 'B', 5), L('Glyceryl', 'B', 3.5),
-          L('Niacinamide', 'C', 4), L('Tocopheryl', 'C', 0.5), L('Phenoxyethanol', 'C', 1), L('Fragrance', 'C', 0.2),
+          L('aqua', 'A', 68.5), L('glycerin', 'A', 5), L('xanthanGum', 'A', 0.3),
+          L('cetearylAlcohol', 'B', 4), L('caprylicCapric', 'B', 8), L('sheaButter', 'B', 5), L('glycerylStearate', 'B', 3.5),
+          L('niacinamide', 'C', 4), L('tocopherylAcetate', 'C', 0.5), L('phenoxyethanol', 'C', 1), L('fragranceNeroli', 'C', 0.2),
         ],
       },
       {
-        id: uid(), name: 'Lightweight Face Lotion', code: 'FL-002', mode: 'percent',
+        id: uid(), name: t('demo.product.faceLotion'), code: 'FL-002', mode: 'percent',
         batchSize: 250, batchUnit: 'kg', overagePct: 2,
         fillSize: 100, fillUnit: 'g', packagingPerUnit: 650000, laborPerBatch: 300000000,
         overheadPct: 12, markupPct: 110, vatPct: 10, notes: '',
         lines: [
-          L('Aqua', 'A', 78.2), L('Glycerin', 'A', 4), L('Xanthan', 'A', 0.5),
-          L('Cetearyl', 'B', 2), L('Caprylic', 'B', 6), L('Shea', 'B', 1.3), L('Glyceryl', 'B', 2.5),
-          L('Niacinamide', 'C', 4), L('Tocopheryl', 'C', 0.3), L('Phenoxyethanol', 'C', 1), L('Fragrance', 'C', 0.2),
+          L('aqua', 'A', 78.2), L('glycerin', 'A', 4), L('xanthanGum', 'A', 0.5),
+          L('cetearylAlcohol', 'B', 2), L('caprylicCapric', 'B', 6), L('sheaButter', 'B', 1.3), L('glycerylStearate', 'B', 2.5),
+          L('niacinamide', 'C', 4), L('tocopherylAcetate', 'C', 0.3), L('phenoxyethanol', 'C', 1), L('fragranceNeroli', 'C', 0.2),
         ],
       },
     ],
@@ -840,6 +897,11 @@ function demoData() {
 }
 
 /* ------------------------------------------------------------------ boot */
+/* Language is settled before anything else: demoData() seeds localised product
+   names, and the static chrome is translated before first paint. */
+initLang();
+syncLangButtons();
+
 if (!load()) {
   state = normalise(demoData());
   save();

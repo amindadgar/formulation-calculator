@@ -10,6 +10,8 @@ batch cost, the cost per saleable unit, and the selling price.
 
 Just open `index.html` in a browser — no server, no build step, no dependencies.
 
+It works on a phone as well as a desktop, in English or Farsi.
+
 New to it? Press **? How to** in the header. It walks through the whole app in
 six steps, with a screenshot for each one and numbered markers on the buttons
 and fields being described.
@@ -56,6 +58,46 @@ Two things worth knowing before you share the link:
   published site, and vice-versa. Move them with **Export** and **Import**.
   Anyone who opens the published link starts with the example data.
 
+## Languages
+
+The interface is available in **English** and **Farsi (فارسی)**. Use the toggle
+at the left of the header; the choice is remembered per browser. On a first
+visit the app follows the browser's own language preference, in priority order,
+and falls back to English.
+
+Farsi switches the layout to right-to-left. A few deliberate decisions:
+
+- **Digits.** Computed figures are shown in Persian digits (`۱٬۲۹۴٬۵۳۳ ریال`),
+  but **editable fields always use Latin digits** in both languages. This is not
+  an oversight: it is what Iranian accounting software does, phone keypads and
+  the ISIRI-9147 layout emit Latin digits, and a value typed back has to
+  round-trip. You can still *type* Persian or Arabic-Indic digits anywhere — the
+  parser normalises them.
+- **INCI names stay in Latin script** (Glycerin, Cetearyl alcohol), as they
+  appear on supplier invoices, COAs and IFDA dossiers. Units (kg, g, L, mL) stay
+  Latin too. Only `pcs` becomes a word.
+- **Numbers are bidi-isolated.** A run like `2,000 × 850,000 IRR` inside a
+  Persian sentence would otherwise be reordered by the Unicode bidi algorithm —
+  parentheses flip and the currency jumps to the wrong end. Each run is wrapped
+  in isolate characters so it reads correctly.
+- **The How-to screenshots are of the English layout.** Regenerating a mirrored
+  Farsi set needs the capture tool to measure pin positions from the DOM rather
+  than from fixed coordinates, so for now the Farsi dialog carries a one-line
+  note saying so.
+
+Your data is never translated or converted — product names, suppliers and
+prices are stored exactly as you typed them, and switching language leaves them
+alone. Only the sample data is seeded in the current language.
+
+## On a phone
+
+The layout is responsive down to 320px. The two editable tables stop being
+tables below 600px and become one card per row, so no horizontal panning is
+needed to enter a price. Fields are 16px (below that, iOS Safari zooms on focus
+and never zooms back) and touch targets are at least 44px. The product list
+becomes a horizontal chip strip so a long catalogue does not push the editor off
+the screen.
+
 ## How it works
 
 ### Currency
@@ -73,7 +115,10 @@ Because Rial figures run to nine or ten digits:
 - price fields show grouped digits (`28,000,000`) when you are not typing in them;
 - large totals carry a compact echo underneath (`≈ 2.59B`);
 - Persian (`۲۸`) and Arabic-Indic digits, and the Persian thousands separator, are
-  accepted anywhere a number is entered.
+  accepted in every numeric field. (Earlier versions used `<input type="number">`
+  for percentages and batch sizes, where the browser's own value sanitiser
+  silently discarded those digits before the app ever saw them; every numeric
+  field is now a text field with a decimal keypad.)
 
 ### Ingredients
 Each ingredient stores the price exactly as the supplier quotes it — a price and
@@ -145,6 +190,7 @@ rather than quietly under-reporting them.
 | `index.html` | Markup, layout and the How-to dialog |
 | `styles.css` | Styling (light and dark) |
 | `app.js` | State, costing engine (`compute()`), rendering |
+| `i18n.js` | English and Farsi strings, `t()`, language switching |
 | `img/` | The screenshots used by the How-to dialog |
 | `tools/build-shots.py` | Regenerates those screenshots |
 
