@@ -4,6 +4,8 @@ A small offline web app for costing cosmetic / pharmaceutical formulations:
 keep a price list of raw materials, build a formulation from them, and get the
 batch cost, the cost per saleable unit, and the selling price.
 
+**Live:** https://amindadgar.github.io/formulation-calculator/
+
 ## Running it
 
 Just open `index.html` in a browser — no server, no build step, no dependencies.
@@ -22,6 +24,27 @@ python3 -m http.server 8777 --directory .
 Data is kept in the browser's `localStorage`, so it stays on the machine that
 entered it. **Export** writes a JSON backup, **Import** restores one. That JSON
 file is also how you move data to another computer.
+
+## Publishing it (GitHub Pages)
+
+The repository is the website — plain files, no build step. Once, in the
+repository's **Settings → Pages**, set **Source** to **GitHub Actions**. After
+that every push to `main` republishes the site through
+`.github/workflows/pages.yml`.
+
+(The alternative, if you would rather not use a workflow: set Source to
+**Deploy from a branch**, branch `main`, folder `/ (root)`, and delete the
+workflow file. `.nojekyll` is what stops GitHub from running the pages through
+Jekyll.)
+
+Two things worth knowing before you share the link:
+
+- **Nothing is uploaded.** The page has no backend and makes no network
+  requests. Whatever anyone types stays in their own browser.
+- **Data does not follow the URL.** `localStorage` belongs to one origin, so
+  ingredients entered in a local copy (`file://…`) will not appear on the
+  published site, and vice-versa. Move them with **Export** and **Import**.
+  Anyone who opens the published link starts with the example data.
 
 ## How it works
 
