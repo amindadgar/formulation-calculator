@@ -117,9 +117,87 @@ let selectedId = null;
 let activeTab = 'formulations';
 let ingFilter = '';
 
+const SEED_KEY = STORAGE_KEY + '-seeded';
+
+/* Records that what is stored is the untouched demo, so signing in can replace
+   it without claiming the user lost work. Any real edit clears the mark. */
+function markDemoSeed()  { try { localStorage.setItem(SEED_KEY, 'demo-only'); } catch (e) {} }
+function clearDemoSeed() { try { localStorage.removeItem(SEED_KEY); } catch (e) {} }
+
 function save() {
+  /* localStorage is always written: it is the offline cache as well as the
+     whole story when no API is configured. */
+  clearDemoSeed();
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch (e) { console.warn(t('console.couldNotSave'), e); }
+  if (api.enabled && api.user) schedulePush();
+}
+
+/* --------------------------------------------------------------- syncing --
+   Edits fire on every keystroke, so pushes are debounced and never overlap:
+   a push in flight sets pushAgain, and the next one starts when it lands. */
+let pushTimer = null, pushing = false, pushAgain = false;
+
+function schedulePush() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushNow, 1200);
+}
+
+async function pushNow() {
+  if (!api.enabled || !api.user) return;
+  if (pushing) { pushAgain = true; return; }
+  pushing = true;
+  syncStatus('saving');
+  try {
+    const res = await apiState.push(state);
+    if (res.conflict) { await handleConflict(res.current); }
+    else syncStatus('saved');
+  } catch (e) {
+    syncStatus(e.code === 'network' ? 'offline' : 'error', e);
+  } finally {
+    pushing = false;
+    if (pushAgain) { pushAgain = false; schedulePush(); }
+  }
+}
+
+/* Someone else saved while this tab was editing. Never resolve it silently —
+   one of the two edits is going to lose, so the person present decides. */
+async function handleConflict(current) {
+  const who = (current && (current.updated_by_name || current.updated_by_email)) || '—';
+  const keepMine = confirm(
+    t('sync.conflict', { name: who }) + '\n\n' +
+    'OK = ' + t('sync.conflictOverwrite') + '\n' +
+    'Cancel = ' + t('sync.conflictReload')
+  );
+  if (keepMine) {
+    api.version = current ? current.version : null;   /* rebase and force ours */
+    await pushNow();
+  } else {
+    adoptServerState(current);
+    syncStatus('saved');
+  }
+}
+
+function adoptServerState(payload) {
+  if (!payload || !payload.data) return;
+  state = normalise(payload.data);
+  api.version = payload.version;
+  selectedId = state.formulations.length ? state.formulations[0].id : null;
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) {}
+  render();
+}
+
+function syncStatus(kind, err) {
+  const el = $('#who');
+  if (!el || !api.user) return;
+  const name = api.user.name || api.user.email;
+  const suffix = kind === 'saving' ? ' · ' + t('sync.saving')
+    : kind === 'offline' ? ' · ' + t('sync.offline')
+    : kind === 'error' ? ' · ' + t('auth.err.generic')
+    : '';
+  el.textContent = t('auth.signedInAs', { name }) + suffix;
+  el.classList.toggle('is-offline', kind === 'offline' || kind === 'error');
+  if (err) console.warn('sync:', err.code || err.message);
 }
 function load() {
   try {
@@ -832,7 +910,7 @@ $('#btn-demo').addEventListener('click', () => {
   }
   state = normalise(demoData());
   selectedId = state.formulations[0].id;
-  save(); render();
+  save(); markDemoSeed(); render();
 });
 
 /* ------------------------------------------------------------------ demo */
@@ -896,6 +974,120 @@ function demoData() {
   };
 }
 
+/* ------------------------------------------------------- sign in / sign out */
+
+let authMode = 'signin';               /* or 'register' */
+
+function showSignIn() {
+  const d = $('#signin');
+  if (!d) return;
+  setAuthMode('signin');
+  if (typeof d.showModal === 'function' && !d.open) d.showModal();
+  else d.setAttribute('open', '');
+}
+
+function setAuthMode(mode) {
+  authMode = mode;
+  const registering = mode === 'register';
+  $('#register-only').hidden = !registering;
+  $('#signin-heading').textContent = t(registering ? 'auth.register' : 'auth.heading');
+  $('#signin-submit').textContent  = t(registering ? 'auth.register' : 'auth.signIn');
+  $('#signin-toggle').textContent  = t(registering ? 'auth.toSignIn' : 'auth.toRegister');
+  $('#signin-password').setAttribute('autocomplete', registering ? 'new-password' : 'current-password');
+  authError('');
+}
+
+function authError(codeOrText) {
+  const el = $('#signin-error');
+  if (!codeOrText) { el.hidden = true; el.textContent = ''; return; }
+  const key = 'auth.err.' + codeOrText;
+  const msg = t(key);
+  el.textContent = msg === key ? t('auth.err.generic') : msg;
+  el.hidden = false;
+}
+
+function reflectSignedIn() {
+  const on = !!(api.enabled && api.user);
+  $('#who').hidden = !on;
+  $('#btn-signout').hidden = !on;
+  if (on) syncStatus('saved');
+}
+
+/* Signed in: the shared dataset replaces whatever this browser had cached.
+   If the server cannot be reached we keep the local copy and say so. */
+async function pullSharedState() {
+  try {
+    const payload = await apiState.pull();
+    const hasData = payload && payload.data && (
+      (payload.data.ingredients || []).length || (payload.data.formulations || []).length);
+    if (hasData) {
+      /* The shared dataset is the source of truth, but this browser may hold
+         work done offline. Never discard it silently — keep a copy aside and
+         say so, so nothing is lost by signing in. */
+      const localHadData = state.ingredients.length || state.formulations.length;
+      if (localHadData) {
+        try {
+          const mine = localStorage.getItem(STORAGE_KEY);
+          const seeded = localStorage.getItem(SEED_KEY);
+          if (mine && seeded !== 'demo-only') {
+            localStorage.setItem('formulation-costing-local-backup', mine);
+            setTimeout(() => alert(t('sync.localStashed')), 50);
+          }
+        } catch (e) { /* private mode */ }
+      }
+      adoptServerState(payload);
+    } else {
+      /* First ever sign-in: seed the shared dataset from what is on screen. */
+      api.version = payload ? payload.version : 0;
+      await pushNow();
+      render();
+    }
+  } catch (e) {
+    console.warn('pull failed:', e.code || e.message);
+    alert(t('sync.pullFailed'));
+    render();
+  }
+}
+
+if ($('#signin')) {
+  $('#signin-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const email = $('#signin-email').value.trim();
+    const password = $('#signin-password').value;
+    const btn = $('#signin-submit');
+    btn.disabled = true; authError('');
+    const previous = btn.textContent;
+    btn.textContent = t('auth.working');
+    try {
+      if (authMode === 'register') {
+        await apiAuth.register(email, password, $('#signin-name').value.trim(), $('#signin-invite').value.trim());
+      } else {
+        await apiAuth.login(email, password);
+      }
+      $('#signin').close();
+      reflectSignedIn();
+      await pullSharedState();
+    } catch (err) {
+      authError(err.code || 'generic');
+    } finally {
+      btn.disabled = false; btn.textContent = previous;
+    }
+  });
+
+  $('#signin-toggle').addEventListener('click', () =>
+    setAuthMode(authMode === 'signin' ? 'register' : 'signin'));
+
+  /* Deliberate escape hatch: the app still works entirely offline, and the
+     data simply stays in this browser. */
+  $('#signin-offline').addEventListener('click', () => { $('#signin').close(); render(); });
+
+  $('#btn-signout').addEventListener('click', async () => {
+    await apiAuth.logout();
+    reflectSignedIn();
+    showSignIn();
+  });
+}
+
 /* ------------------------------------------------------------------ boot */
 /* Language is settled before anything else: demoData() seeds localised product
    names, and the static chrome is translated before first paint. */
@@ -905,7 +1097,17 @@ syncLangButtons();
 if (!load()) {
   state = normalise(demoData());
   save();
+  markDemoSeed();
 }
 selectedId = state.formulations.length ? state.formulations[0].id : null;
 tabFromHash();
 render();
+
+/* With no API configured this is the whole story — the app stays local-only,
+   exactly as it was, and works from file://. */
+if (api.enabled) {
+  apiAuth.resume().then(user => {
+    if (user) { reflectSignedIn(); return pullSharedState(); }
+    showSignIn();
+  });
+}

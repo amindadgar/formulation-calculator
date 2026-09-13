@@ -45,6 +45,8 @@
         <option value="TRY" label="Turkish Lira" data-i18n-attr="label:toolbar.currency.opt.try"></option>
       </datalist>
     </label>
+    <span id="who" class="who" hidden></span>
+    <button id="btn-signout" class="ghost" type="button" data-i18n="auth.signOut" hidden>Sign out</button>
     <button id="btn-howto" class="ghost help" type="button"><span class="help-badge" aria-hidden="true">?</span> <span data-i18n="toolbar.howto">How to</span></button>
     <button id="btn-export" class="ghost" type="button" data-i18n="toolbar.export">Export</button>
     <button id="btn-import" class="ghost" type="button" data-i18n="toolbar.import">Import</button>
@@ -253,7 +255,48 @@
   </footer>
 </dialog>
 
+
+<!-- ============ SIGN IN ============ -->
+<dialog id="signin" class="signin">
+  <form id="signin-form" method="dialog">
+    <h2 id="signin-heading" data-i18n="auth.heading">Sign in</h2>
+    <p class="sub" data-i18n="auth.intro">Your company's ingredients and formulations are shared. Sign in to see them.</p>
+
+    <label class="field">
+      <span data-i18n="auth.email">Email</span>
+      <input id="signin-email" type="email" autocomplete="email" required>
+    </label>
+
+    <label class="field">
+      <span data-i18n="auth.password">Password</span>
+      <input id="signin-password" type="password" autocomplete="current-password" required>
+    </label>
+
+    <div id="register-only" hidden>
+      <label class="field">
+        <span data-i18n="auth.name">Your name</span>
+        <input id="signin-name" type="text" autocomplete="name">
+      </label>
+      <label class="field">
+        <span data-i18n="auth.inviteCode">Invite code</span>
+        <input id="signin-invite" type="text" autocomplete="off">
+      </label>
+    </div>
+
+    <p id="signin-error" class="msg err" hidden></p>
+
+    <button id="signin-submit" class="primary" type="submit" data-i18n="auth.signIn">Sign in</button>
+    <button id="signin-toggle" class="linkish" type="button" data-i18n="auth.toRegister">Create an account</button>
+
+    <hr>
+    <button id="signin-offline" class="ghost" type="button" data-i18n="auth.offline">Work offline on this device</button>
+    <p class="hint" data-i18n="auth.offlineNote">Offline data stays in this browser only and is not shared.</p>
+  </form>
+</dialog>
+
+<script src="config.js"></script>
 <script src="i18n.js"></script>
+<script src="api.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

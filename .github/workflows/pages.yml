@@ -36,8 +36,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/configure-pages@v6
+      # Publish only the front-end. Without this the whole repo is served as
+      # static files, including the API source under server/.
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          cp index.html styles.css app.js i18n.js api.js config.js .nojekyll _site/
+          cp -r img _site/
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: .          # .git and .github are excluded by the action
+          path: _site
       - id: deployment
         uses: actions/deploy-pages@v5

@@ -27,6 +27,58 @@ Data is kept in the browser's `localStorage`, so it stays on the machine that
 entered it. **Export** writes a JSON backup, **Import** restores one. That JSON
 file is also how you move data to another computer.
 
+## Accounts and shared data
+
+By default the app is local-only: everything lives in this browser, and
+`config.js` has an empty API URL. Point `window.FORMULATION_API` at the Railway
+service and the app gains accounts and one shared company dataset.
+
+    index.html / app.js  —  GitHub Pages   (public, no secrets)
+             |  fetch + Bearer token
+             v
+    server/  —  Railway  ->  Postgres
+
+**Everyone sees the same ingredients and formulations.** Each save records who
+made it, and the shared row carries a version number: if a colleague saved while
+you were editing, your save is refused and you are asked whether to keep theirs
+or overwrite — an edit is never silently lost.
+
+Auth is a token in `localStorage`, not a cookie, because the page and the API
+are on different sites and Safari blocks third-party cookies outright. If you
+ever move both behind one company domain (`app.example.com` +
+`api.example.com`), ordinary cookies become possible and are the better choice.
+
+### Who can create an account
+
+Set on the Railway service:
+
+| Variable | Meaning |
+|---|---|
+| `SIGNUP_MODE` | `invite` (default), `domain`, or `closed` |
+| `INVITE_CODE` | required when mode is `invite` |
+| `ALLOWED_EMAIL_DOMAIN` | required when mode is `domain`, e.g. `melika.com` |
+| `ALLOWED_ORIGINS` | comma-separated list of sites allowed to call the API |
+
+The **first account created becomes the administrator**, whatever the mode.
+
+### Running the API locally
+
+```bash
+cd server
+npm install
+DATABASE_URL=postgresql://... ALLOWED_ORIGINS=http://localhost:8801 \
+  INVITE_CODE=dev npm start
+```
+
+The schema is applied on boot and every statement is idempotent, so there is no
+migration step to run or forget.
+
+### Moving existing data in
+
+Export from the local-only app, sign in, then Import. The first sign-in against
+an empty database also seeds the shared dataset from whatever that browser
+already had.
+
 ## Publishing it (GitHub Pages)
 
 The repository is the website — plain files, no build step.
@@ -191,6 +243,9 @@ rather than quietly under-reporting them.
 | `styles.css` | Styling (light and dark) |
 | `app.js` | State, costing engine (`compute()`), rendering |
 | `i18n.js` | English and Farsi strings, `t()`, language switching |
+| `config.js` | Where the shared API lives (empty = local-only) |
+| `api.js` | Talks to the API: sign in, pull and push the shared data |
+| `server/` | The API: accounts, sessions and the shared dataset |
 | `img/` | The screenshots used by the How-to dialog |
 | `tools/build-shots.py` | Regenerates those screenshots |
 
