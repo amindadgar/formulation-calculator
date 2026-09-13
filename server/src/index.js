@@ -33,8 +33,13 @@ const ok = (v) => typeof v === 'string' && v.trim().length > 0;
 
 /* ---------------------------------------------------------------- health --*/
 app.get('/api/health', async (_req, res) => {
+  if (!dbReady) {
+    /* Deliberately 200: the process is alive and this is the only place that
+       explains why it cannot serve yet. A 502 with no body tells nobody
+       anything. */
+    return res.json({ ok: false, db: 'not_ready', error: dbError });
+  }
   try {
-    await q('SELECT 1');
     const { rows } = await q('SELECT count(*)::int AS users FROM users');
     res.json({ ok: true, users: rows[0].users, signup: signupMode() });
   } catch (err) {
@@ -190,7 +195,29 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'server_error' });
 });
 
+/* Listen first. Railway's private network needs a moment after the container
+   starts, so binding the port before touching the database means the service
+   is reachable — and its logs are useful — even while Postgres is still
+   coming up. */
 const port = process.env.PORT || 3000;
-migrate()
-  .then(() => app.listen(port, () => console.log(`formulation-api listening on ${port}`)))
-  .catch(err => { console.error('startup failed:', err); process.exit(1); });
+app.listen(port, () => console.log(`formulation-api listening on ${port}`));
+
+let dbReady = false;
+let dbError = null;
+
+(async function initDb(attempt = 1) {
+  try {
+    await migrate();
+    dbReady = true;
+    dbError = null;
+    console.log('database ready');
+  } catch (err) {
+    dbError = String(err.message || err);
+    console.error(`database not ready (attempt ${attempt}): ${dbError}`);
+    if (attempt < 10) {
+      setTimeout(() => initDb(attempt + 1), Math.min(attempt * 2000, 15000));
+    } else {
+      console.error('giving up on the database; /api/health explains the state');
+    }
+  }
+})();

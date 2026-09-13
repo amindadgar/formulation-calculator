@@ -16,7 +16,18 @@ export const pool = new pg.Pool({
     : false,
   max: 5,
   idleTimeoutMillis: 30_000,
+  /* Without this a bad host hangs forever and the container looks silent. */
+  connectionTimeoutMillis: 10_000,
 });
+
+/* Log where we are connecting, never the credentials — this is the one fact
+   needed to tell an unresolved variable reference from a real outage. */
+try {
+  const u = new URL(process.env.DATABASE_URL);
+  console.log(`database target: ${u.hostname}:${u.port || 5432}${u.pathname}`);
+} catch (e) {
+  console.error('DATABASE_URL is not a valid URL — check the variable reference');
+}
 
 export const q = (text, params) => pool.query(text, params);
 
