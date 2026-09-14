@@ -986,10 +986,24 @@ function showSignIn() {
   else d.setAttribute('open', '');
 }
 
+/* What the server requires; asked once, lazily, the first time someone opens
+   the registration form. */
+let signupModeCache = null;
+
+async function refreshInviteField() {
+  const field = $('#invite-field');
+  if (!field) return;
+  if (signupModeCache === null) signupModeCache = await apiAuth.signupMode();
+  /* Only the invite mode needs a code. Asking for one in open or domain mode
+     would be an unanswerable question. */
+  field.hidden = signupModeCache !== 'invite';
+}
+
 function setAuthMode(mode) {
   authMode = mode;
   const registering = mode === 'register';
   $('#register-only').hidden = !registering;
+  if (registering) refreshInviteField();
   $('#signin-heading').textContent = t(registering ? 'auth.register' : 'auth.heading');
   $('#signin-submit').textContent  = t(registering ? 'auth.register' : 'auth.signIn');
   $('#signin-toggle').textContent  = t(registering ? 'auth.toSignIn' : 'auth.toRegister');

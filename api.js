@@ -61,6 +61,18 @@ async function apiFetch(path, opts = {}) {
 }
 
 const apiAuth = {
+  /* Which sign-up rule the server is enforcing, so the form can ask for an
+     invite code only when one is actually required. Never blocks sign-in: if
+     the server cannot be reached we fall back to asking for the code. */
+  async signupMode() {
+    try {
+      const h = await apiFetch('/api/health');
+      return h && h.signup ? h.signup : 'invite';
+    } catch (e) {
+      return 'invite';
+    }
+  },
+
   async register(email, password, name, inviteCode) {
     const r = await apiFetch('/api/auth/register', {
       method: 'POST', body: { email, password, name, inviteCode },

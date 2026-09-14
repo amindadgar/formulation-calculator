@@ -48,14 +48,17 @@ app.get('/api/health', async (_req, res) => {
 });
 
 /* ------------------------------------------------------------------ auth --
-   Who may create an account:
+   Who may create an account, set by the SIGNUP_MODE variable:
      invite  (default) — needs INVITE_CODE, which you set as a Railway variable
      domain            — any email ending in ALLOWED_EMAIL_DOMAIN
+     open              — anyone at all, no code. Note what this means: the site
+                         is a public URL, so anyone who finds it can read your
+                         supplier prices and margins. Use it only briefly.
      closed            — nobody; an admin creates accounts
    The very first account is always allowed, and becomes the admin. */
 function signupMode() {
   const m = (process.env.SIGNUP_MODE || 'invite').toLowerCase();
-  return ['invite', 'domain', 'closed'].includes(m) ? m : 'invite';
+  return ['invite', 'domain', 'open', 'closed'].includes(m) ? m : 'invite';
 }
 
 async function signupAllowed(email, inviteCode) {
@@ -64,6 +67,7 @@ async function signupAllowed(email, inviteCode) {
 
   const mode = signupMode();
   if (mode === 'closed') return { allowed: false, reason: 'signup_closed' };
+  if (mode === 'open') return { allowed: true, role: 'member' };
   if (mode === 'domain') {
     const domain = (process.env.ALLOWED_EMAIL_DOMAIN || '').toLowerCase().replace(/^@/, '');
     if (!domain) return { allowed: false, reason: 'signup_misconfigured' };
@@ -71,9 +75,16 @@ async function signupAllowed(email, inviteCode) {
       ? { allowed: true, role: 'member' }
       : { allowed: false, reason: 'email_domain_not_allowed' };
   }
-  const expected = process.env.INVITE_CODE || '';
+  /* Compare leniently. The stored variable can easily pick up a trailing
+     newline or space depending on how it was set, and a colleague pasting the
+     code from a chat message brings its own whitespace — neither should read
+     as "wrong code". Case is ignored too: this gates team sign-up, and a
+     capitalisation mismatch costs far more in support than it buys in
+     entropy. */
+  const norm = v => String(v == null ? '' : v).trim().toLowerCase();
+  const expected = norm(process.env.INVITE_CODE);
   if (!expected) return { allowed: false, reason: 'signup_misconfigured' };
-  return inviteCode === expected
+  return norm(inviteCode) === expected
     ? { allowed: true, role: 'member' }
     : { allowed: false, reason: 'bad_invite_code' };
 }
