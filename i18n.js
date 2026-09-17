@@ -187,7 +187,7 @@ const STRINGS = {
     "ing.col.unitcost": "Unit cost",
     "ing.empty": "No ingredients yet. Add one, or load the demo data set.",
     "ing.heading": "Ingredients",
-    "ing.hint": "Enter the purchase price per unit exactly as your supplier quotes it (e.g. 4,200,000 Rial per kg). Density is only needed when an ingredient is bought by volume but used by weight (or vice-versa).",
+    "ing.hint": "Enter the purchase price per unit exactly as your supplier quotes it (e.g. 420,000 Toman per kg). Density is only needed when an ingredient is bought by volume but used by weight (or vice-versa).",
     "ing.search.placeholder": "Search ingredients…",
     /* --- ingredients --- */
     "ingredients.notUsed": "Not used yet",
@@ -487,7 +487,7 @@ const STRINGS = {
     "ing.col.unitcost": "بهای واحد",
     "ing.empty": "هنوز ماده اولیه‌ای ثبت نشده است. یکی اضافه کنید یا داده‌های نمونه را بارگذاری کنید.",
     "ing.heading": "مواد اولیه",
-    "ing.hint": "قیمت خرید هر واحد را دقیقاً همان‌طور که تأمین‌کننده اعلام می‌کند وارد کنید (مثلاً ۴٬۲۰۰٬۰۰۰ ریال به ازای هر کیلوگرم). دانسیته فقط زمانی لازم است که ماده‌ای را حجمی می‌خرید ولی وزنی مصرف می‌کنید (یا برعکس).",
+    "ing.hint": "قیمت خرید هر واحد را دقیقاً همان‌طور که تأمین‌کننده اعلام می‌کند وارد کنید (مثلاً ۴۲۰٬۰۰۰ تومان به ازای هر کیلوگرم). دانسیته فقط زمانی لازم است که ماده‌ای را حجمی می‌خرید ولی وزنی مصرف می‌کنید (یا برعکس).",
     "ing.search.placeholder": "جست‌وجوی مواد اولیه…",
     /* --- ingredients --- */
     "ingredients.notUsed": "هنوز استفاده نشده است",

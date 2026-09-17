@@ -77,7 +77,7 @@ function money(v) {
     return new Intl.NumberFormat(displayLocale(), fmt).format(v) + (code ? ' ' + code : '');
   }
 }
-/* Large figures (a Rial batch cost runs to ten digits) get a compact echo. */
+/* Large figures (a batch cost runs to many digits) get a compact echo. */
 function compact(v) {
   if (!Number.isFinite(v) || Math.abs(v) < 1e6) return '';
   try {
@@ -112,7 +112,7 @@ function opts(list, selected) {
 }
 
 /* ----------------------------------------------------------------- state */
-let state = { settings: { currency: 'IRR' }, ingredients: [], formulations: [] };
+let state = { settings: { currency: 'IRT' }, ingredients: [], formulations: [] };
 let selectedId = null;
 let activeTab = 'formulations';
 let ingFilter = '';
@@ -208,7 +208,7 @@ function load() {
 }
 function normalise(data) {
   const s = {
-    settings: { currency: (data && data.settings && data.settings.currency) || 'IRR' },
+    settings: { currency: (data && data.settings && data.settings.currency) || 'IRT' },
     ingredients: Array.isArray(data && data.ingredients) ? data.ingredients : [],
     formulations: Array.isArray(data && data.formulations) ? data.formulations : [],
   };
@@ -922,19 +922,19 @@ function demoData() {
     ({ id: uid(), key, name: t('demo.ingredient.' + key), code, supplier,
        price, unit, density: density == null ? '' : density });
 
-  /* Illustrative Rial prices only — replace them with your own supplier quotes. */
+  /* Illustrative Toman prices only — replace them with your own supplier quotes. */
   const list = [
-    ing('aqua', 'RM-001', t('demo.supplier.inHouse'), 600000, 'kg'),
-    ing('glycerin', 'RM-002', 'Oleo Chem', 2800000, 'kg'),
-    ing('cetearylAlcohol', 'RM-003', 'Oleo Chem', 4200000, 'kg'),
-    ing('caprylicCapric', 'RM-004', 'Lipid Co', 6500000, 'kg'),
-    ing('sheaButter', 'RM-005', 'Lipid Co', 9000000, 'kg'),
-    ing('glycerylStearate', 'RM-006', 'Emul Ltd', 7400000, 'kg'),
-    ing('niacinamide', 'RM-007', 'Vita Fine', 28000000, 'kg'),
-    ing('tocopherylAcetate', 'RM-008', 'Vita Fine', 65000000, 'kg'),
-    ing('phenoxyethanol', 'RM-009', 'Preserv AG', 12000000, 'kg'),
-    ing('xanthanGum', 'RM-010', 'Hydro Gums', 22000000, 'kg'),
-    ing('fragranceNeroli', 'RM-011', 'Aroma House', 120000000, 'L', 0.92),
+    ing('aqua', 'RM-001', t('demo.supplier.inHouse'), 60000, 'kg'),
+    ing('glycerin', 'RM-002', 'Oleo Chem', 280000, 'kg'),
+    ing('cetearylAlcohol', 'RM-003', 'Oleo Chem', 420000, 'kg'),
+    ing('caprylicCapric', 'RM-004', 'Lipid Co', 650000, 'kg'),
+    ing('sheaButter', 'RM-005', 'Lipid Co', 900000, 'kg'),
+    ing('glycerylStearate', 'RM-006', 'Emul Ltd', 740000, 'kg'),
+    ing('niacinamide', 'RM-007', 'Vita Fine', 2800000, 'kg'),
+    ing('tocopherylAcetate', 'RM-008', 'Vita Fine', 6500000, 'kg'),
+    ing('phenoxyethanol', 'RM-009', 'Preserv AG', 1200000, 'kg'),
+    ing('xanthanGum', 'RM-010', 'Hydro Gums', 2200000, 'kg'),
+    ing('fragranceNeroli', 'RM-011', 'Aroma House', 12000000, 'L', 0.92),
   ];
   const by = key => {
     const hit = list.find(i => i.key === key);
@@ -944,13 +944,13 @@ function demoData() {
   const L = (key, phase, value) => ({ ingredientId: by(key), phase, value, unit: 'g' });
 
   return {
-    settings: { currency: 'IRR' },
+    settings: { currency: 'IRT' },
     ingredients: list,
     formulations: [
       {
         id: uid(), name: t('demo.product.faceCream'), code: 'FC-001', mode: 'percent',
         batchSize: 100, batchUnit: 'kg', overagePct: 2,
-        fillSize: 50, fillUnit: 'g', packagingPerUnit: 850000, laborPerBatch: 220000000,
+        fillSize: 50, fillUnit: 'g', packagingPerUnit: 85000, laborPerBatch: 22000000,
         overheadPct: 12, markupPct: 120, vatPct: 10,
         notes: t('demo.notes.faceCream'),
         lines: [
@@ -962,7 +962,7 @@ function demoData() {
       {
         id: uid(), name: t('demo.product.faceLotion'), code: 'FL-002', mode: 'percent',
         batchSize: 250, batchUnit: 'kg', overagePct: 2,
-        fillSize: 100, fillUnit: 'g', packagingPerUnit: 650000, laborPerBatch: 300000000,
+        fillSize: 100, fillUnit: 'g', packagingPerUnit: 65000, laborPerBatch: 30000000,
         overheadPct: 12, markupPct: 110, vatPct: 10, notes: '',
         lines: [
           L('aqua', 'A', 78.2), L('glycerin', 'A', 4), L('xanthanGum', 'A', 0.5),

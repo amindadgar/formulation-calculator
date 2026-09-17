@@ -153,16 +153,18 @@ the screen.
 ## How it works
 
 ### Currency
-The app works in **Iranian Rial (IRR)** by default and every figure is shown as
-`1,294,533 IRR`. Rial amounts have no sub-unit, so they are displayed without
-decimals and with thousands separators.
+The app works in **Iranian Toman (IRT)** by default and every figure is shown as
+`129,453 IRT`. Toman amounts have no sub-unit, so they are displayed without
+decimals and with thousands separators. `IRR` is also available for prices
+quoted in Rials — the app never converts between them, so enter every price in
+whichever unit you select.
 
 The currency box in the header accepts any ISO code and suggests the common ones;
 `IRT` is offered for prices quoted in **Toman**. Changing it only changes the
 label and the decimal convention — the app never converts between currencies, so
 enter every price in the same unit you select.
 
-Because Rial figures run to nine or ten digits:
+Because these figures run to many digits:
 
 - price fields show grouped digits (`28,000,000`) when you are not typing in them;
 - large totals carry a compact echo underneath (`≈ 2.59B`);
