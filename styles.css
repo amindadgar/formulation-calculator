@@ -51,10 +51,10 @@ p{margin:0}
 .inline input{width:64px;text-transform:uppercase}
 
 /* ---------- tabs ---------- */
-.tabs{display:flex;gap:2px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line)}
+.tabs{display:flex;gap:2px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line);overflow-x:auto}
 .tab{
   appearance:none;background:none;border:0;border-bottom:2px solid transparent;
-  padding:10px 14px;font:inherit;font-weight:550;color:var(--muted);cursor:pointer;
+  padding:10px 14px;font:inherit;font-weight:550;color:var(--muted);cursor:pointer;white-space:nowrap;
 }
 
 .tab.active{color:var(--accent);border-bottom-color:var(--accent)}
@@ -170,6 +170,19 @@ table.grid.lines-table{min-width:760px}
 table.plain.breakdown{min-width:560px}
 .line-err{color:var(--danger);font-size:11px}
 
+/* ---------- production & sales ---------- */
+.prod-overview{margin-bottom:18px}
+.prod-overview .totals{margin-top:0}
+table.plain.prod-stock{min-width:520px}
+table.grid.prod-table{min-width:760px}
+.progress{height:8px;border-radius:99px;background:var(--line-soft);overflow:hidden;margin:2px 0 6px}
+.progress > div{height:100%;background:var(--accent);border-radius:inherit;transition:width .2s}
+#run-summary .totals{margin-top:12px}
+.primary:disabled{opacity:.5;cursor:not-allowed;filter:none}
+input[data-jdate]{font-variant-numeric:tabular-nums}
+input.invalid,table.grid td input.invalid{border-color:var(--danger);outline-color:var(--danger)}
+[dir="rtl"] input[data-jdate]{text-align:end}
+
 .foot{padding:16px 20px;color:var(--muted);font-size:12px;text-align:center}
 
 @media print{
@@ -179,7 +192,7 @@ table.plain.breakdown{min-width:560px}
   .card{break-inside:avoid;box-shadow:none;border-color:#ccc}
   /* A scroll container prints as a clip, so unwrap every table or columns are lost. */
   .table-wrap{overflow:visible!important;box-shadow:none;background:none;border-color:#ccc}
-  table.grid,table.plain,table.grid.lines-table{min-width:0!important}
+  table.grid,table.plain,table.grid.lines-table,table.grid.prod-table{min-width:0!important}
 }
 
 /* ---------- how-to ---------- */
@@ -341,7 +354,7 @@ button{-webkit-tap-highlight-color:transparent}
 
   /* ---- the two editable grids stop being tables and become cards ---- */
   /* both selectors: table.grid.lines-table (0,2,1) outranks table.grid (0,1,1) */
-  table.grid,table.grid.lines-table{min-width:0}
+  table.grid,table.grid.lines-table,table.grid.prod-table{min-width:0}
   table.grid,table.grid tbody,table.grid tr,table.grid td{display:block}
   table.grid thead{display:none}
   table.grid tr{
@@ -365,6 +378,9 @@ button{-webkit-tap-highlight-color:transparent}
     font-size:16px;min-height:44px;padding:9px 10px;
   }
   table.grid.lines-table td:nth-child(2){order:-1}   /* ingredient first in card form */
+  table.grid.sales-table td:nth-child(2){order:-1}   /* product first in card form */
+  .tabs{padding:0 6px}
+  .tab{padding:10px 10px}
   .lf-unit{flex:0 0 96px}
   table.grid td.empty-cell{grid-column:1/-1}
   table.grid td.empty-cell::before{content:none}

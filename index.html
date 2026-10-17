@@ -58,7 +58,30 @@
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="formulations" type="button" data-i18n="tabs.formulations">Formulations</button>
   <button class="tab" data-tab="ingredients" type="button" data-i18n="tabs.ingredients">Ingredients</button>
+  <button class="tab" data-tab="production" type="button" data-i18n="tabs.production">Production &amp; sales</button>
 </nav>
+
+<!-- ============ PRODUCTION & SALES ============ -->
+<section id="view-production" class="view" hidden>
+  <div class="view-head">
+    <div>
+      <h2 data-i18n="prod.heading">Production &amp; sales</h2>
+      <p class="hint" data-i18n="prod.hint">Record what you produced on a given day, then record each sale against it. The app keeps track of how many units are left and how much money has come in.</p>
+    </div>
+  </div>
+  <div id="prod-overview"></div>
+  <div class="layout">
+    <aside class="side">
+      <div class="side-head">
+        <h2 data-i18n="prod.runs.heading">Production runs</h2>
+        <button id="btn-add-run" class="primary small" type="button" data-i18n="prod.add">+ New</button>
+      </div>
+      <ul id="run-list" class="form-list"></ul>
+      <p id="run-empty" class="empty small" hidden data-i18n="prod.empty">No production recorded yet.</p>
+    </aside>
+    <main class="editor" id="run-editor"></main>
+  </div>
+</section>
 
 <!-- ============ INGREDIENTS ============ -->
 <section id="view-ingredients" class="view" hidden>

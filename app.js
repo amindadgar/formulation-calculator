@@ -112,8 +112,9 @@ function opts(list, selected) {
 }
 
 /* ----------------------------------------------------------------- state */
-let state = { settings: { currency: 'IRT' }, ingredients: [], formulations: [] };
+let state = { settings: { currency: 'IRT' }, ingredients: [], formulations: [], production: [] };
 let selectedId = null;
+let selectedRunId = null;
 let activeTab = 'formulations';
 let ingFilter = '';
 
@@ -211,6 +212,7 @@ function normalise(data) {
     settings: { currency: (data && data.settings && data.settings.currency) || 'IRT' },
     ingredients: Array.isArray(data && data.ingredients) ? data.ingredients : [],
     formulations: Array.isArray(data && data.formulations) ? data.formulations : [],
+    production: Array.isArray(data && data.production) ? data.production : [],
   };
   s.ingredients = s.ingredients.map(i => ({
     id: i.id || uid(), name: i.name || '', code: i.code || '', supplier: i.supplier || '',
@@ -240,10 +242,117 @@ function normalise(data) {
       unit: UNITS[l.unit] ? l.unit : 'g',
     })),
   }));
+  s.production = s.production.map(r => ({
+    id: r.id || uid(),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(r.date || '') ? r.date : todayISO(),
+    note: r.note || '',
+    items: (Array.isArray(r.items) ? r.items : []).map(it => ({
+      id: it.id || uid(),
+      productId: it.productId || '',
+      productName: it.productName || '',
+      units: num(it.units),
+      unitCost: num(it.unitCost),
+      unitPrice: num(it.unitPrice),
+    })),
+    sales: (Array.isArray(r.sales) ? r.sales : []).map(sl => ({
+      id: sl.id || uid(),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(sl.date || '') ? sl.date : todayISO(),
+      itemId: sl.itemId || '',
+      units: num(sl.units),
+      unitPrice: num(sl.unitPrice),
+      note: sl.note || '',
+    })),
+  }));
   return s;
 }
 const getIng = id => state.ingredients.find(i => i.id === id) || null;
 const getForm = id => state.formulations.find(f => f.id === id) || null;
+const getRun = id => state.production.find(r => r.id === id) || null;
+/* Local calendar date, not UTC: toISOString() would file an evening entry in
+   Tehran under the previous day. */
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/* ------------------------------------------------------- Shamsi calendar --
+   Dates are stored as Gregorian ISO strings (sortable, unambiguous, and what
+   older saved data already holds) but are always shown and typed as Solar
+   Hijri (Shamsi), in both languages. The conversion is the 33-year arithmetic
+   calendar; checked day by day against Intl's Persian calendar for 1950-2080. */
+function toJalali(gy, gm, gd) {
+  const cum = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  const gy2 = gm > 2 ? gy + 1 : gy;
+  let days = 355666 + 365 * gy + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100)
+    + Math.floor((gy2 + 399) / 400) + gd + cum[gm - 1];
+  let jy = -1595 + 33 * Math.floor(days / 12053);
+  days %= 12053;
+  jy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) { jy += Math.floor((days - 1) / 365); days = (days - 1) % 365; }
+  return days < 186
+    ? [jy, 1 + Math.floor(days / 31), 1 + days % 31]
+    : [jy, 7 + Math.floor((days - 186) / 30), 1 + (days - 186) % 30];
+}
+function toGregorian(jy, jm, jd) {
+  jy += 1595;
+  let days = -355668 + 365 * jy + Math.floor(jy / 33) * 8 + Math.floor((jy % 33 + 3) / 4)
+    + jd + (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
+  let gy = 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) {
+    gy += 100 * Math.floor(--days / 36524);
+    days %= 36524;
+    if (days >= 365) days++;
+  }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) { gy += Math.floor((days - 1) / 365); days = (days - 1) % 365; }
+  let gd = days + 1;
+  const len = [0, 31, (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0 ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let gm = 0;
+  while (gm < 13 && gd > len[gm]) gd -= len[gm++];
+  return [gy, gm, gd];
+}
+
+/* "2026-10-17" -> "1405/07/25", the form used in the date fields. */
+function isoToShamsi(isoDate) {
+  const [y, m, d] = String(isoDate).split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const [jy, jm, jd] = toJalali(y, m, d);
+  return jy + '/' + String(jm).padStart(2, '0') + '/' + String(jd).padStart(2, '0');
+}
+/* "1405/7/25", "۱۴۰۵/۰۷/۲۵", "1405-07-25", "14050725" or "05/7/25" -> ISO,
+   or null when it is not a real Shamsi date (Esfand 30 in a common year, say). */
+function shamsiToIso(text) {
+  const s = toAscii(String(text)).trim();
+  let parts = /^\d{8}$/.test(s) ? [s.slice(0, 4), s.slice(4, 6), s.slice(6)] : s.split(/[\/\-.\s\u066B\u060C]+/);
+  if (parts.length !== 3 || parts.some(x => !/^\d+$/.test(x))) return null;
+  let [jy, jm, jd] = parts.map(Number);
+  if (jy < 100) jy += 1400;
+  if (jy < 1300 || jy > 1500 || jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
+  const [gy, gm, gd] = toGregorian(jy, jm, jd);
+  const back = toJalali(gy, gm, gd);
+  if (back[0] !== jy || back[1] !== jm || back[2] !== jd) return null;
+  return gy + '-' + String(gm).padStart(2, '0') + '-' + String(gd).padStart(2, '0');
+}
+/* "25 Mehr 1405" / "۲۵ مهر ۱۴۰۵", optionally with the weekday. */
+function fmtDate(isoDate, withWeekday) {
+  const [y, m, d] = String(isoDate).split('-').map(Number);
+  if (!y || !m || !d) return '—';
+  try {
+    const parts = new Intl.DateTimeFormat(displayLocale() + '-u-ca-persian',
+      { year: 'numeric', month: 'long', day: 'numeric', weekday: withWeekday ? 'long' : undefined })
+      .formatToParts(new Date(y, m - 1, d));
+    const p = k => (parts.find(x => x.type === k) || {}).value || '';
+    const date = p('day') + ' ' + p('month') + ' ' + p('year');
+    return withWeekday ? p('weekday') + ' ' + date : date;
+  } catch (e) { return isoToShamsi(isoDate); }
+}
+/* Date fields: text, Latin digits like every other editable field. */
+const dateField = (attr, isoDate) =>
+  `${attr} data-jdate="1" type="text" inputmode="decimal" dir="ltr" autocomplete="off" spellcheck="false"`
+  + ` value="${esc(isoToShamsi(isoDate))}" placeholder="${esc(isoToShamsi(todayISO()))}"`;
 
 /* ------------------------------------------------------------ costing --- 
    Everything below is pure: given a formulation it returns the full cost
@@ -378,6 +487,57 @@ function compute(f) {
   };
 }
 
+/* A production run and the sales recorded against it. Cost and price are the
+   figures captured when the run was entered, so editing a recipe later does
+   not rewrite what an old batch cost. */
+function computeRun(r) {
+  const items = r.items.map(it => {
+    const sales = r.sales.filter(s => s.itemId === it.id);
+    const sold = sales.reduce((a, s) => a + num(s.units), 0);
+    const income = sales.reduce((a, s) => a + num(s.units) * num(s.unitPrice), 0);
+    const units = num(it.units);
+    return {
+      item: it, units, sold, income,
+      remaining: units - sold,
+      cost: units * num(it.unitCost),
+      expected: units * num(it.unitPrice),
+      stockValue: Math.max(0, units - sold) * num(it.unitPrice),
+    };
+  });
+  const sum = k => items.reduce((a, x) => a + x[k], 0);
+  /* A sale whose product line was deleted still counts as money received. */
+  const orphanIncome = r.sales
+    .filter(s => !r.items.some(it => it.id === s.itemId))
+    .reduce((a, s) => a + num(s.units) * num(s.unitPrice), 0);
+  const units = sum('units'), sold = sum('sold');
+  const income = sum('income') + orphanIncome;
+  const cost = sum('cost');
+  return {
+    items, units, sold, income, cost,
+    remaining: units - sold,
+    expected: sum('expected'),
+    stockValue: sum('stockValue'),
+    profit: income - cost,
+    soldPct: units > 0 ? Math.min(100, sold / units * 100) : 0,
+    soldOut: units > 0 && sold >= units,
+    oversold: items.some(x => x.remaining < 0),
+  };
+}
+
+/* What one unit of a formulation costs and sells for today, used as the
+   starting figures when it is added to a run. */
+function productSnapshot(f) {
+  const c = compute(f);
+  const dec = naturalDecimals((state.settings.currency || '').toUpperCase());
+  const round = v => Number.isFinite(v) ? parseFloat(v.toFixed(dec)) : 0;
+  return {
+    productName: f.name || '',
+    unitCost: round(c.costPerUnit),
+    unitPrice: round(c.priceExVat),
+    units: c.unitsPerBatch || 0,
+  };
+}
+
 /* ================================================================ RENDER */
 
 function render() {
@@ -385,7 +545,9 @@ function render() {
   $$('#tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.tab === activeTab));
   $('#view-ingredients').hidden = activeTab !== 'ingredients';
   $('#view-formulations').hidden = activeTab !== 'formulations';
+  $('#view-production').hidden = activeTab !== 'production';
   if (activeTab === 'ingredients') renderIngredients();
+  else if (activeTab === 'production') renderProduction();
   else { renderFormList(); renderEditor(); }
 }
 
@@ -593,11 +755,6 @@ function renderResults() {
   }).join('');
 
   const perUnit = v => Number.isFinite(v) ? money(v) : '—';
-  const tile = (k, v, raw, hi) => {
-    const c2 = raw == null ? '' : compact(raw);
-    return `<div class="tot${hi ? ' hi' : ''}"><div class="k">${k}</div><div class="v">${v}</div>`
-         + (c2 ? `<div class="c">${c2}</div>` : '') + `</div>`;
-  };
 
   const broken = c.lines.filter(r => r.error).length;
 
@@ -664,6 +821,260 @@ function renderResults() {
   `;
 }
 
+/* ------------------------------------------------------------ production */
+const runsByDate = () => state.production.slice()
+  .sort((a, b) => b.date.localeCompare(a.date) || 0);
+const itemName = it => {
+  const f = getForm(it.productId);
+  return (f && f.name) || it.productName || t('defaults.untitled');
+};
+const fmtUnits = v => iso(trimNum(v, 2));
+/* Shared by the summary tiles here and on the formulation results. */
+function tile(k, v, raw, hi) {
+  const c2 = raw == null ? '' : compact(raw);
+  return `<div class="tot${hi ? ' hi' : ''}"><div class="k">${k}</div><div class="v">${v}</div>`
+       + (c2 ? `<div class="c">${c2}</div>` : '') + `</div>`;
+}
+function runStatus(c) {
+  if (!c.units) return `<span class="badge bad">${esc(t('prod.status.empty'))}</span>`;
+  if (c.oversold) return `<span class="badge bad">${esc(t('prod.status.oversold'))}</span>`;
+  if (c.soldOut) return `<span class="badge ok">${esc(t('prod.status.soldOut'))}</span>`;
+  return `<span class="badge bad">${esc(t('prod.status.left', { n: trimNum(c.remaining, 2), pct: trimNum(c.soldPct, 0) }))}</span>`;
+}
+
+function renderProduction() {
+  if (!getRun(selectedRunId)) {
+    const first = runsByDate()[0];
+    selectedRunId = first ? first.id : null;
+  }
+  renderOverview();
+  renderRunList();
+  renderRunEditor();
+}
+
+/* Totals over every run, and where each product's stock stands. */
+function renderOverview() {
+  const box = $('#prod-overview');
+  if (!state.production.length) { box.innerHTML = ''; return; }
+  const all = state.production.map(computeRun);
+  const sum = k => all.reduce((a, c) => a + c[k], 0);
+
+  const byProduct = new Map();
+  state.production.forEach((r, i) => all[i].items.forEach(x => {
+    const key = x.item.productId || 'name:' + x.item.productName;
+    const p = byProduct.get(key) || { name: itemName(x.item), units: 0, sold: 0, income: 0 };
+    p.units += x.units; p.sold += x.sold; p.income += x.income;
+    byProduct.set(key, p);
+  }));
+  const rows = Array.from(byProduct.values())
+    .sort((a, b) => (b.units - b.sold) - (a.units - a.sold))
+    .map(p => `<tr>
+      <td>${esc(p.name)}</td>
+      <td class="num">${fmtUnits(p.units)}</td>
+      <td class="num">${fmtUnits(p.sold)}</td>
+      <td class="num">${p.units - p.sold > 0 ? fmtUnits(p.units - p.sold)
+        : `<span class="badge ok">${esc(t('prod.status.soldOut'))}</span>`}</td>
+      <td class="num">${iso(money(p.income))}</td>
+    </tr>`).join('');
+
+  box.innerHTML = `
+    <section class="card prod-overview">
+      <div class="card-head"><h2>${esc(t('prod.overview.heading'))}</h2></div>
+      <div class="totals">
+        ${tile(t('prod.tile.unitsInStock'), fmtUnits(sum('remaining')))}
+        ${tile(t('prod.tile.stockValue'), iso(money(sum('stockValue'))), sum('stockValue'))}
+        ${tile(t('prod.tile.productionCost'), iso(money(sum('cost'))), sum('cost'))}
+        ${tile(t('prod.tile.income'), iso(money(sum('income'))), sum('income'), true)}
+        ${tile(t('prod.tile.profit'), iso(money(sum('profit'))), sum('profit'), true)}
+      </div>
+      <div class="table-wrap breakdown-wrap" style="margin-top:14px">
+        <table class="plain prod-stock">
+          <thead><tr>
+            <th>${esc(t('prod.col.product'))}</th>
+            <th class="num">${esc(t('prod.col.produced'))}</th>
+            <th class="num">${esc(t('prod.col.sold'))}</th>
+            <th class="num">${esc(t('prod.col.left'))}</th>
+            <th class="num">${esc(t('prod.col.income'))}</th>
+          </tr></thead>
+          <tbody>${rows || `<tr><td colspan="5" class="empty small">${esc(t('prod.items.empty'))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+function renderRunList() {
+  $('#run-empty').hidden = state.production.length > 0;
+  $('#run-list').innerHTML = runsByDate().map(r => {
+    const c = computeRun(r);
+    const meta = !c.units ? t('prod.status.empty')
+      : c.soldOut ? t('prod.status.soldOut')
+      : t('prod.list.meta', { products: trimNum(r.items.length, 0), pct: trimNum(c.soldPct, 0) });
+    return `<li class="${r.id === selectedRunId ? 'active' : ''}">
+      <button data-id="${r.id}" type="button">${esc(fmtDate(r.date))}${r.note ? ' · ' + esc(r.note) : ''}
+        <span class="meta">${esc(meta)}</span>
+      </button></li>`;
+  }).join('');
+}
+
+function renderRunEditor() {
+  const ed = $('#run-editor');
+  const r = getRun(selectedRunId);
+  if (!r) { ed.innerHTML = `<p class="empty">${esc(t('prod.editor.empty'))}</p>`; return; }
+
+  const productOpts = sel => {
+    const known = state.formulations.map(f =>
+      `<option value="${f.id}"${f.id === sel ? ' selected' : ''}>${esc(f.name || t('defaults.untitled'))}</option>`).join('');
+    return `<option value="">${esc(t('prod.chooseProduct'))}</option>${known}`;
+  };
+  const itemRows = r.items.map(it => {
+    /* a product deleted from Formulations keeps its row, under its old name */
+    const gone = it.productId && !getForm(it.productId)
+      ? `<option value="${esc(it.productId)}" selected>${esc(t('prod.deletedProduct', { name: it.productName || t('defaults.untitled') }))}</option>` : '';
+    return `<tr data-item="${it.id}">
+      <td data-label="${esc(t('prod.col.product'))}" data-span="full"><select data-if="productId" dir="auto">${productOpts(it.productId)}${gone}</select></td>
+      <td data-label="${esc(t('prod.col.unitsMade'))}"><input data-if="units" ${NUMF} value="${esc(it.units)}"></td>
+      <td data-label="${esc(t('prod.col.unitCost'))}"><input data-if="unitCost" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(it.unitCost))}"></td>
+      <td data-label="${esc(t('prod.col.unitPrice'))}"><input data-if="unitPrice" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(it.unitPrice))}"></td>
+      <td class="num" data-label="${esc(t('prod.col.sold'))}" data-cell="sold"></td>
+      <td class="num" data-label="${esc(t('prod.col.left'))}" data-cell="left"></td>
+      <td class="act"><button class="danger small" data-act="del-item" type="button" title="${esc(t('common.deleteTitle'))}">✕</button></td>
+    </tr>`;
+  }).join('');
+
+  const itemOpts = sel => r.items.map(it =>
+    `<option value="${it.id}"${it.id === sel ? ' selected' : ''}>${esc(itemName(it))}</option>`).join('');
+  const saleRows = r.sales.slice()
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map(s => `<tr data-sale="${s.id}">
+      <td data-label="${esc(t('prod.col.date'))}"><input ${dateField('data-sf="date"', s.date)} title="${esc(fmtDate(s.date, true))}"></td>
+      <td data-label="${esc(t('prod.col.product'))}" data-span="full"><select data-sf="itemId" dir="auto">
+        ${r.items.some(it => it.id === s.itemId) ? '' : `<option value="" selected>${esc(t('prod.chooseProduct'))}</option>`}${itemOpts(s.itemId)}</select></td>
+      <td data-label="${esc(t('prod.col.unitsSold'))}"><input data-sf="units" ${NUMF} value="${esc(s.units)}"></td>
+      <td data-label="${esc(t('prod.col.unitPrice'))}"><input data-sf="unitPrice" data-money="1" type="text" inputmode="decimal" value="${esc(grouped(s.unitPrice))}"></td>
+      <td class="num" data-label="${esc(t('prod.col.amount'))}" data-cell="amount"></td>
+      <td data-label="${esc(t('prod.col.note'))}"><input data-sf="note" dir="auto" value="${esc(s.note)}" placeholder="${esc(t('prod.placeholder.saleNote'))}"></td>
+      <td class="act"><button class="danger small" data-act="del-sale" type="button" title="${esc(t('common.deleteTitle'))}">✕</button></td>
+    </tr>`).join('');
+
+  ed.innerHTML = `
+    <section class="card">
+      <div class="card-head">
+        <h2>${esc(t('prod.run.heading'))}</h2>
+        <div class="actions">
+          <button class="danger small" data-act="del-run" type="button">${esc(t('editor.action.delete'))}</button>
+        </div>
+      </div>
+      <div class="fields">
+        <div class="field"><label>${esc(t('prod.field.date'))}</label>
+          <input ${dateField('data-rf="date"', r.date)}>
+          <span class="hint" data-cell="date-local"></span></div>
+        <div class="field span2"><label>${esc(t('prod.field.note'))}</label>
+          <input data-rf="note" dir="auto" value="${esc(r.note)}" placeholder="${esc(t('prod.placeholder.note'))}"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>${esc(t('prod.items.heading'))}</h2>
+          <p class="hint">${esc(t('prod.items.hint'))}</p>
+        </div>
+        <div class="actions"><button class="primary small" data-act="add-item" type="button">${esc(t('prod.items.add'))}</button></div>
+      </div>
+      <div class="table-wrap">
+        <table class="grid prod-table">
+          <thead><tr>
+            <th style="width:30%">${esc(t('prod.col.product'))}</th>
+            <th style="width:11%">${esc(t('prod.col.unitsMade'))}</th>
+            <th style="width:17%">${esc(t('prod.col.unitCost'))}</th>
+            <th style="width:17%">${esc(t('prod.col.unitPrice'))}</th>
+            <th style="width:9%">${esc(t('prod.col.sold'))}</th>
+            <th style="width:10%">${esc(t('prod.col.left'))}</th>
+            <th style="width:6%"></th>
+          </tr></thead>
+          <tbody>${itemRows || `<tr><td colspan="7" class="empty small empty-cell">${esc(t('prod.items.empty'))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <div>
+          <h2>${esc(t('prod.sales.heading'))}</h2>
+          <p class="hint">${esc(t('prod.sales.hint'))}</p>
+        </div>
+        <div class="actions"><button class="primary small" data-act="add-sale" type="button"${r.items.length ? '' : ' disabled'}>${esc(t('prod.sales.add'))}</button></div>
+      </div>
+      <div class="table-wrap">
+        <table class="grid prod-table sales-table">
+          <thead><tr>
+            <th style="width:15%">${esc(t('prod.col.date'))}</th>
+            <th style="width:24%">${esc(t('prod.col.product'))}</th>
+            <th style="width:10%">${esc(t('prod.col.unitsSold'))}</th>
+            <th style="width:15%">${esc(t('prod.col.unitPrice'))}</th>
+            <th style="width:14%">${esc(t('prod.col.amount'))}</th>
+            <th style="width:16%">${esc(t('prod.col.note'))}</th>
+            <th style="width:6%"></th>
+          </tr></thead>
+          <tbody>${saleRows || `<tr><td colspan="7" class="empty small empty-cell">${esc(t(r.items.length ? 'prod.sales.empty' : 'prod.sales.needItems'))}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" id="run-summary"></section>`;
+
+  refreshRunFigures();
+}
+
+/* Updates every computed figure in place, so typing in a field is never
+   interrupted by a re-render. */
+function refreshRunFigures() {
+  const r = getRun(selectedRunId);
+  if (!r) return;
+  const c = computeRun(r);
+
+  const dl = $('#run-editor [data-cell="date-local"]');
+  if (dl) dl.textContent = fmtDate(r.date, true);
+
+  c.items.forEach(x => {
+    const tr = $(`#run-editor tr[data-item="${x.item.id}"]`);
+    if (!tr) return;
+    tr.querySelector('[data-cell="sold"]').innerHTML = fmtUnits(x.sold);
+    tr.querySelector('[data-cell="left"]').innerHTML = x.remaining < 0
+      ? `<span class="line-err">${fmtUnits(x.remaining)}</span>`
+      : x.units > 0 && x.remaining === 0
+        ? `<span class="badge ok">${esc(t('prod.status.soldOut'))}</span>` : fmtUnits(x.remaining);
+  });
+  r.sales.forEach(s => {
+    const tr = $(`#run-editor tr[data-sale="${s.id}"]`);
+    if (tr) tr.querySelector('[data-cell="amount"]').innerHTML = iso(money(num(s.units) * num(s.unitPrice)));
+  });
+
+  const msgs = [];
+  if (r.items.some(it => !it.productId)) msgs.push({ type: 'warn', text: t('prod.msg.noProduct') });
+  c.items.filter(x => x.remaining < 0).forEach(x => msgs.push({ type: 'err',
+    text: t('prod.msg.oversold', { name: itemName(x.item), sold: trimNum(x.sold, 2), made: trimNum(x.units, 2) }) }));
+  if (r.sales.some(s => !r.items.some(it => it.id === s.itemId))) msgs.push({ type: 'warn', text: t('prod.msg.saleNoProduct') });
+
+  $('#run-summary').innerHTML = `
+    <div class="card-head"><h2>${esc(t('prod.summary.heading'))}</h2>${runStatus(c)}</div>
+    <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(c.soldPct)}"
+      aria-label="${esc(t('prod.summary.soldPct', { pct: trimNum(c.soldPct, 0) }))}"><div style="width:${c.soldPct}%"></div></div>
+    <p class="hint">${esc(t('prod.summary.soldPct', { pct: trimNum(c.soldPct, 0) }))}</p>
+    <div class="totals">
+      ${tile(t('prod.tile.unitsMade'), fmtUnits(c.units))}
+      ${tile(t('prod.tile.unitsSold'), fmtUnits(c.sold))}
+      ${tile(t('prod.tile.unitsLeft'), fmtUnits(c.remaining))}
+      ${tile(t('prod.tile.productionCost'), iso(money(c.cost)), c.cost)}
+      ${tile(t('prod.tile.expected'), iso(money(c.expected)), c.expected)}
+      ${tile(t('prod.tile.income'), iso(money(c.income)), c.income, true)}
+      ${tile(t('prod.tile.stillToCollect'), iso(money(c.stockValue)), c.stockValue)}
+      ${tile(t('prod.tile.profit'), iso(money(c.profit)), c.profit, true)}
+    </div>
+    ${msgs.length ? `<div class="msgs">${msgs.map(m =>
+        `<div class="msg ${m.type}">${esc(m.text)}</div>`).join('')}</div>` : ''}`;
+}
+
 /* ================================================================ EVENTS */
 
 $('#tabs').addEventListener('click', e => {
@@ -675,14 +1086,16 @@ $('#tabs').addEventListener('click', e => {
 });
 function tabFromHash() {
   const h = (location.hash || '').replace('#', '');
-  if (h === 'ingredients' || h === 'formulations') activeTab = h;
+  if (h === 'ingredients' || h === 'formulations' || h === 'production') activeTab = h;
 }
 window.addEventListener('hashchange', () => { tabFromHash(); render(); });
 
 $('#currency').addEventListener('input', e => {
   state.settings.currency = e.target.value.toUpperCase();
   save();
-  if (activeTab === 'ingredients') renderIngredients(); else { renderFormList(); renderResults(); }
+  if (activeTab === 'ingredients') renderIngredients();
+  else if (activeTab === 'production') { renderOverview(); renderRunList(); refreshRunFigures(); }
+  else { renderFormList(); renderResults(); }
 });
 
 /* ---- ingredients ---- */
@@ -804,6 +1217,114 @@ $('#editor').addEventListener('click', e => {
   }
 });
 
+/* ---- production ---- */
+$('#btn-add-run').addEventListener('click', () => {
+  const r = normalise({ production: [{ date: todayISO(), items: [], sales: [] }] }).production[0];
+  state.production.push(r);
+  selectedRunId = r.id;
+  save(); renderProduction();
+});
+$('#run-list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-id]'); if (!b) return;
+  selectedRunId = b.dataset.id;
+  renderRunList(); renderRunEditor();
+});
+
+/* Typing only refreshes the computed figures; the inputs are left alone. */
+$('#run-editor').addEventListener('input', e => {
+  const r = getRun(selectedRunId); if (!r) return;
+  const el = e.target;
+  /* a date that does not parse yet is half-typed: flag it, keep the old one */
+  if (el.dataset.jdate) {
+    const isoDate = shamsiToIso(el.value);
+    el.classList.toggle('invalid', !isoDate);
+    if (!isoDate) return;
+    el.title = fmtDate(isoDate, true);
+  }
+  const val = () => el.dataset.jdate ? shamsiToIso(el.value)
+    : (el.dataset.num || el.dataset.money) ? num(el.value) : el.value;
+
+  if (el.dataset.rf) {
+    r[el.dataset.rf] = val();
+  } else if (el.dataset.if && el.dataset.if !== 'productId') {
+    const it = r.items.find(x => x.id === el.closest('tr[data-item]').dataset.item); if (!it) return;
+    it[el.dataset.if] = val();
+  } else if (el.dataset.sf && el.dataset.sf !== 'itemId') {
+    const s = r.sales.find(x => x.id === el.closest('tr[data-sale]').dataset.sale); if (!s) return;
+    s[el.dataset.sf] = val();
+  } else return;
+  save();
+  refreshRunFigures(); renderRunList(); renderOverview();
+});
+
+/* Choosing a product fills in today's cost and price for it, which can then
+   be overridden; those figures stay with the run from then on. */
+$('#run-editor').addEventListener('change', e => {
+  const r = getRun(selectedRunId); if (!r) return;
+  const el = e.target;
+  if (el.dataset.if === 'productId') {
+    const it = r.items.find(x => x.id === el.closest('tr[data-item]').dataset.item); if (!it) return;
+    it.productId = el.value;
+    const f = getForm(el.value);
+    if (f) {
+      const snap = productSnapshot(f);
+      it.productName = snap.productName;
+      it.unitCost = snap.unitCost;
+      it.unitPrice = snap.unitPrice;
+      if (!num(it.units)) it.units = snap.units;
+    }
+  } else if (el.dataset.sf === 'itemId') {
+    const s = r.sales.find(x => x.id === el.closest('tr[data-sale]').dataset.sale); if (!s) return;
+    s.itemId = el.value;
+    const it = r.items.find(x => x.id === el.value);
+    if (it) s.unitPrice = it.unitPrice;
+  } else return;
+  save(); renderProduction();
+});
+
+$('#run-editor').addEventListener('click', e => {
+  const r = getRun(selectedRunId); if (!r) return;
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const act = btn.dataset.act;
+
+  if (act === 'add-item') {
+    r.items.push(normalise({ production: [{ items: [{}] }] }).production[0].items[0]);
+    save(); renderProduction();
+    const last = $('#run-editor tr[data-item]:last-child select');
+    if (last) last.focus();
+  }
+  else if (act === 'del-item') {
+    const id = btn.closest('tr[data-item]').dataset.item;
+    const it = r.items.find(x => x.id === id);
+    const nSales = r.sales.filter(s => s.itemId === id).length;
+    if (nSales && !confirm(t('prod.confirm.deleteItemWithSales', { name: itemName(it), n: nSales }))) return;
+    r.items = r.items.filter(x => x.id !== id);
+    r.sales = r.sales.filter(s => s.itemId !== id);
+    save(); renderProduction();
+  }
+  else if (act === 'add-sale') {
+    /* default to the first product that still has stock */
+    const c = computeRun(r);
+    const pick = (c.items.find(x => x.remaining > 0) || c.items[0] || {}).item;
+    r.sales.push({ id: uid(), date: todayISO(), itemId: pick ? pick.id : '',
+      units: 0, unitPrice: pick ? pick.unitPrice : 0, note: '' });
+    save(); renderProduction();
+    const row = $(`#run-editor tr[data-sale="${r.sales[r.sales.length - 1].id}"] input[data-sf="units"]`);
+    if (row) row.focus();
+  }
+  else if (act === 'del-sale') {
+    const id = btn.closest('tr[data-sale]').dataset.sale;
+    r.sales = r.sales.filter(s => s.id !== id);
+    save(); renderProduction();
+  }
+  else if (act === 'del-run') {
+    if (!confirm(t('prod.confirm.deleteRun', { date: fmtDate(r.date) }))) return;
+    state.production = state.production.filter(x => x.id !== r.id);
+    selectedRunId = null;
+    save(); renderProduction();
+  }
+});
+
 /* Switching between % and absolute keeps the recipe equivalent. */
 function convertMode(f, mode) {
   const batchU = UNITS[f.batchUnit];
@@ -872,6 +1393,15 @@ document.addEventListener('focusin', e => {
 document.addEventListener('focusout', e => {
   const t = e.target;
   if (t.dataset && t.dataset.money) { t.value = num(t.value) ? grouped(t.value) : ''; }
+  /* A date left unparseable goes back to the one actually stored, so what is
+     on screen is always what was saved. */
+  if (t.dataset && t.dataset.jdate) {
+    const r = getRun(selectedRunId);
+    const row = t.closest('tr[data-sale]');
+    const owner = !r ? null : row ? r.sales.find(x => x.id === row.dataset.sale) : r;
+    if (owner) t.value = isoToShamsi(owner.date);
+    t.classList.remove('invalid');
+  }
 });
 
 /* ---- import / export / demo ---- */
@@ -890,7 +1420,8 @@ $('#file-import').addEventListener('change', e => {
   fr.onload = () => {
     try {
       const data = JSON.parse(fr.result);
-      if (!data || (!Array.isArray(data.ingredients) && !Array.isArray(data.formulations))) {
+      if (!data || (!Array.isArray(data.ingredients) && !Array.isArray(data.formulations)
+          && !Array.isArray(data.production))) {
         throw new Error(t('error.unrecognisedFile'));
       }
       if (!confirm(t('dialog.confirmImport'))) return;
@@ -905,7 +1436,7 @@ $('#file-import').addEventListener('change', e => {
   e.target.value = '';
 });
 $('#btn-demo').addEventListener('click', () => {
-  if (state.ingredients.length || state.formulations.length) {
+  if (state.ingredients.length || state.formulations.length || state.production.length) {
     if (!confirm(t('dialog.confirmDemo'))) return;
   }
   state = normalise(demoData());
@@ -1033,12 +1564,13 @@ async function pullSharedState() {
   try {
     const payload = await apiState.pull();
     const hasData = payload && payload.data && (
-      (payload.data.ingredients || []).length || (payload.data.formulations || []).length);
+      (payload.data.ingredients || []).length || (payload.data.formulations || []).length
+      || (payload.data.production || []).length);
     if (hasData) {
       /* The shared dataset is the source of truth, but this browser may hold
          work done offline. Never discard it silently — keep a copy aside and
          say so, so nothing is lost by signing in. */
-      const localHadData = state.ingredients.length || state.formulations.length;
+      const localHadData = state.ingredients.length || state.formulations.length || state.production.length;
       if (localHadData) {
         try {
           const mine = localStorage.getItem(STORAGE_KEY);

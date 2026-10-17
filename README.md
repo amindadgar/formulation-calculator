@@ -230,6 +230,31 @@ Notes on the model:
 - Units per batch is floored — a partial jar is not saleable, and its share of
   the material cost stays in the batch cost.
 
+### Production & sales
+The **Production & sales** tab records what was actually made and sold:
+
+- A **production run** is a date plus the products made that day and how many
+  units of each. Choosing a product fills in its current cost and sale price per
+  unit (ex VAT) from the formulation; both are editable and are **stored with
+  the run**, so changing a recipe later does not rewrite what an old batch cost.
+- Each **sale** is recorded against a run: date, product, units and the price
+  actually charged per unit.
+- For each run the app shows units made / sold / left, production cost, income
+  received, income if everything sells, and profit so far. Selling more than was
+  made is flagged.
+- The top of the tab totals every run and lists each product's remaining stock,
+  so you can see at a glance what is sold out and what is still on the shelf.
+
+Dates are **Shamsi (Solar Hijri)** in both languages: type them as
+`1405/07/25` (Persian digits, `-` or `.` separators and `05/7/25` also work),
+and they are shown as `25 Mehr 1405` / `۲۵ مهر ۱۴۰۵`. An impossible date — such
+as Esfand 30 in a common year — is outlined in red and not saved. Underneath,
+dates are stored as Gregorian ISO strings (`2026-10-17`) so they sort correctly
+and stay unambiguous in exported files.
+
+Production data is part of the same dataset as everything else, so it is
+shared when signed in and included in **Export** / **Import**.
+
 ### Validation
 The results panel lists every problem it finds: percentages that do not total
 100 %, absolute quantities that do not match the batch size, ingredients with no
