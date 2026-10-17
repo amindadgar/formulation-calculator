@@ -156,13 +156,17 @@ the screen.
 The app works in **Iranian Toman (IRT)** by default and every figure is shown as
 `129,453 IRT`. Toman amounts have no sub-unit, so they are displayed without
 decimals and with thousands separators. `IRR` is also available for prices
-quoted in Rials — the app never converts between them, so enter every price in
-whichever unit you select.
+quoted in Rials.
 
-The currency box in the header accepts any ISO code and suggests the common ones;
-`IRT` is offered for prices quoted in **Toman**. Changing it only changes the
-label and the decimal convention — the app never converts between currencies, so
-enter every price in the same unit you select.
+**Switching between `IRR` and `IRT` converts every amount** — ingredient prices,
+packaging, labour, and the cost and price figures in Production & sales — at the
+fixed 10 Rial = 1 Toman, after asking for confirmation. Percentages, quantities
+and densities are untouched. Relabelling without converting would make every
+figure ten times wrong, so the app never does that for this pair.
+
+The currency box accepts any ISO code and suggests the common ones. For any
+other change (say `IRT` to `USD`) there is no fixed rate, so only the label and
+the decimal convention change — enter every price in the currency you select.
 
 Because these figures run to many digits:
 

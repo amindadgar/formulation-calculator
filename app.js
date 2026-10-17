@@ -1090,13 +1090,48 @@ function tabFromHash() {
 }
 window.addEventListener('hashchange', () => { tabFromHash(); render(); });
 
+/* Rial and Toman are the same money at a fixed 10:1, so moving between them
+   converts every stored amount; relabelling alone would make every figure
+   ten times wrong. Any other change only relabels — there is no fixed rate. */
+const RIAL_PER = { IRR: 1, IRT: 10 };
+
+function convertAmounts(factor) {
+  const x = v => parseFloat((num(v) * factor).toFixed(6));
+  state.ingredients.forEach(i => { i.price = x(i.price); });
+  state.formulations.forEach(f => {
+    f.packagingPerUnit = x(f.packagingPerUnit);
+    f.laborPerBatch = x(f.laborPerBatch);
+  });
+  state.production.forEach(r => {
+    r.items.forEach(it => { it.unitCost = x(it.unitCost); it.unitPrice = x(it.unitPrice); });
+    r.sales.forEach(sl => { sl.unitPrice = x(sl.unitPrice); });
+  });
+}
+
+/* Only a complete three-letter code is acted on: typing IRR -> IR -> IRT must
+   be seen as one IRR-to-IRT switch, not as two relabels through "IR". */
 $('#currency').addEventListener('input', e => {
-  state.settings.currency = e.target.value.toUpperCase();
+  const next = e.target.value.trim().toUpperCase();
+  const prev = (state.settings.currency || '').toUpperCase();
+  if (next.length !== 3 || next === prev) return;
+
+  if (RIAL_PER[prev] && RIAL_PER[next]) {
+    const factor = RIAL_PER[prev] / RIAL_PER[next];
+    if (!confirm(t('currency.confirmConvert', {
+      from: t('currency.' + prev + '.label'), to: t('currency.' + next + '.label'),
+      op: t(factor > 1 ? 'currency.op.multiply' : 'currency.op.divide',
+        { n: trimNum(factor > 1 ? factor : 1 / factor, 0) }) }))) {
+      e.target.value = state.settings.currency;
+      return;
+    }
+    convertAmounts(factor);
+  }
+  state.settings.currency = next;
   save();
-  if (activeTab === 'ingredients') renderIngredients();
-  else if (activeTab === 'production') { renderOverview(); renderRunList(); refreshRunFigures(); }
-  else { renderFormList(); renderResults(); }
+  render();
 });
+/* A half-typed code left behind goes back to the one in use. */
+$('#currency').addEventListener('change', e => { e.target.value = state.settings.currency; });
 
 /* ---- ingredients ---- */
 $('#btn-add-ing').addEventListener('click', () => {
